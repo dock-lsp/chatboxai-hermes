@@ -1,6 +1,6 @@
 {
-  "name": "xyz.chatboxapp.ce",
-  "productName": "xyz.chatboxapp.ce",
+  "name": "com.wanxiang.chat",
+  "productName": "万象Chat",
   "version": "0.0.1",
   "engines": {
     "node": ">=20.0.0 <23.0.0",

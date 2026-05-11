@@ -26,6 +26,7 @@ export enum ModelProviderEnum {
   XAI = 'xAI',
   OpenRouter = 'openrouter',
   Bedrock = 'bedrock',
+  Xiaomi = 'xiaomi',
   Custom = 'custom',
 }
 
@@ -35,4 +36,5 @@ export enum ModelProviderType {
   Gemini = 'gemini',
   Claude = 'claude',
   OpenAIResponses = 'openai-responses',
+  Xiaomi = 'xiaomi',
 }

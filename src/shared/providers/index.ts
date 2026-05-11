@@ -28,6 +28,7 @@ import './definitions/volcengine'
 import './definitions/chatglm'
 import './definitions/github-copilot'
 import './definitions/bedrock'
+import './definitions/xiaomi'
 import {
   clearProviderRegistry,
   defineProvider,
