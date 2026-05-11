@@ -23,7 +23,10 @@ jobs:
       - name: 安装依赖
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-        run: pnpm install --no-frozen-lockfile --no-optional
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
+
+      - name: 仅运行项目postinstall
+        run: node .erb/scripts/postinstall.cjs 2>/dev/null || true
 
       - name: 构建 Web 版本
         env:
