@@ -58,3 +58,14 @@ export function createBearerOAuthFetch(..._args: unknown[]): undefined {
 export function createOpenAIOAuthFetch(..._args: unknown[]): undefined {
   return undefined
 }
+
+// OAuth IPC Channel stubs — used by renderer but not needed in web build
+export const OAuthIpcChannels = {
+  CANCEL: 'oauth:cancel',
+  LOGIN: 'oauth:login',
+  START_LOGIN: 'oauth:start-login',
+  EXCHANGE_CODE: 'oauth:exchange-code',
+  START_DEVICE_FLOW: 'oauth:start-device-flow',
+  WAIT_DEVICE_TOKEN: 'oauth:wait-device-token',
+  REFRESH: 'oauth:refresh',
+} as const
