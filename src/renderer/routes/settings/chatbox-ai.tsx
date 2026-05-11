@@ -1,6 +1,6 @@
-import { Button, Input, Stack, Text, Title } from '@mantine/core'
+import { Anchor, Button, Group, Input, Stack, Text, Title } from '@mantine/core'
 import { type ModelProvider, ModelProviderEnum } from '@shared/types'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import useChatboxAIModels from '@/hooks/useChatboxAIModels'
 import { useProviderSettings, useSettingsStore } from '@/stores/settingsStore'
@@ -31,6 +31,24 @@ export function RouteComponent() {
 
   return (
     <Stack gap="xxl" p="md">
+      {/* ChatboxAI 账户（保留原注册/登录通道）*/}
+      <Stack gap="md">
+        <Title order={4}>🔑 ChatboxAI 账户</Title>
+        <Text size="sm" c="dimmed">
+          使用 ChatboxAI 官方账户登录，获取云端模型、联网搜索、文件解析等高级功能。
+        </Text>
+        <Group>
+          <Button
+            component={Link}
+            to="/settings/provider/chatbox-ai"
+            variant="filled"
+            color="blue"
+          >
+            登录 / 注册 ChatboxAI 账户
+          </Button>
+        </Group>
+      </Stack>
+
       {/* 自定义后端配置 */}
       <Stack gap="md">
         <Title order={4}>🌐 自定义后端（可选）</Title>
