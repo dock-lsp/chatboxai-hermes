@@ -26,7 +26,7 @@ import './definitions/mistral-ai'
 import './definitions/perplexity'
 import './definitions/volcengine'
 import './definitions/chatglm'
-import './definitions/github-copilot'
+// import './definitions/github-copilot'  // 文件不存在，暂时禁用
 import './definitions/bedrock'
 import './definitions/xiaomi'
 import {
