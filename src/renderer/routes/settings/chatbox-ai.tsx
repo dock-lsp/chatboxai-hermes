@@ -4,7 +4,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import useChatboxAIModels from '@/hooks/useChatboxAIModels'
 import { useProviderSettings, useSettingsStore } from '@/stores/settingsStore'
-import { setCustomApiOrigin } from '../../../../shared/request/chatboxai_pool'
+import { setCustomApiOrigin } from '@shared/request/chatboxai_pool'
 import { ModelManagement } from './provider/chatbox-ai/-components/ModelManagement'
 
 export const Route = createFileRoute('/settings/chatbox-ai')({
