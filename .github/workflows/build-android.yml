@@ -15,15 +15,22 @@ jobs:
       - name: 安装 Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
 
       - name: 安装 pnpm
-        run: npm install -g pnpm@10
+        run: npm install -g pnpm@9
 
       - name: 安装依赖
+        env:
+          npm_config_ignore_scripts: 'true'
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: pnpm install --no-frozen-lockfile
 
       - name: 构建 Web 版本
+        env:
+          CHATBOX_BUILD_PLATFORM: web
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: pnpm run build:web
 
       - name: 配置 Capacitor + Android
