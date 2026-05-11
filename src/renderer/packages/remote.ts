@@ -87,17 +87,21 @@ async function getAuthenticatedAfetch() {
   return _authenticatedAfetch
 }
 
-// ========== API ORIGIN 根据可用性维护 ==========
+// ========== API ORIGIN 万象Chat 自定义后端 ==========
 
-// const RELEASE_ORIGIN = 'https://releases.chatboxai.app'
 function getAPIOrigin() {
   if (USE_LOCAL_API) {
     return 'http://localhost:8002'
   } else if (USE_BETA_API) {
     return 'https://api-beta.chatboxai.app'
-  } else {
-    return chatboxaiAPI.getChatboxAPIOrigin()
   }
+  // 优先使用用户自定义的后端地址（从 settings 中读取）
+  try {
+    const { settingsStore } = require('@/stores/settingsStore')
+    const customOrigin = settingsStore.getState().customApiOrigin
+    if (customOrigin) return customOrigin.replace(/\/+$/, '')
+  } catch {}
+  return chatboxaiAPI.getChatboxAPIOrigin()
 }
 
 export function getChatboxOrigin() {

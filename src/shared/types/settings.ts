@@ -325,7 +325,8 @@ export const SettingsSchema = GlobalSessionSettingsSchema.extend({
     .optional()
     .catch(undefined),
 
-  // chatboxai
+  // chatboxai (万象Chat — 自定义后端)
+  customApiOrigin: z.string().optional().catch(undefined),
   licenseKey: z.string().optional(),
   licenseInstances: z.record(z.string(), z.string()).optional().catch(undefined),
   licenseDetail: ChatboxAILicenseDetailSchema.optional().catch(undefined),

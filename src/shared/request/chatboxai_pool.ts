@@ -1,65 +1,61 @@
-import uniq from 'lodash/uniq'
-import { ofetch } from 'ofetch'
-import { cache } from '../utils/cache'
+/**
+ * 万象Chat — API 后端配置
+ * 支持自定义后端，默认离线模式（无需服务器）
+ */
 
-let API_ORIGIN = 'https://api.chatboxai.app'
+// 默认 API 地址（可被 settings 覆盖）
+let CUSTOM_API_ORIGIN = ''
 
-let POOL = [
-  'https://api.chatboxai.app',
-  'https://chatboxai.app',
-  'https://api.ai-chatbox.com',
-  'https://api.chatboxapp.xyz',
-]
-
-export function isChatboxAPI(input: RequestInfo | URL) {
-  const url = typeof input === 'string' ? input : (input as Request).url ?? input.toString()
-  return POOL.some((o) => url.startsWith(o)) || url.startsWith(API_ORIGIN)
+// 设置自定义 API 地址
+export function setCustomApiOrigin(origin: string) {
+  CUSTOM_API_ORIGIN = origin.replace(/\/+$/, '')
 }
 
-export function getChatboxAPIOrigin() {
+// 获取当前 API 地址
+export function getCustomApiOrigin(): string {
+  return CUSTOM_API_ORIGIN
+}
+
+// 获取 API 地址（优先使用自定义地址）
+export function getAPIOrigin(): string {
   if (process.env.USE_LOCAL_API) {
     return 'http://localhost:8002'
   }
-  return API_ORIGIN
+  return CUSTOM_API_ORIGIN || ''
 }
 
-/**
- * 按顺序测试 API 的可用性，只要有一个 API 域名可用，就终止测试并切换所有流量到该域名。
- * 在测试过程中，会根据服务器返回添加新的 API 域名，并缓存到本地
- */
-export async function testApiOrigins() {
-  // 按顺序测试 API 的可用性
-  const result = await cache(
-    'api_origins',
-    async () => {
-      let i = 0
-      let pool = POOL
-      while (i < pool.length) {
-        try {
-          const origin: string = pool[i]
-          const controller = new AbortController()
-          setTimeout(() => controller.abort(), 2000) // 2秒超时
-          const res = await ofetch<{ data: { api_origins: string[] } }>(`${origin}/api/api_origins`, {
-            signal: controller.signal,
-            retry: 1,
-          })
-          // 如果服务器返回了新的 API 域名，则更新缓存
-          if (res.data.api_origins.length > 0) {
-            pool = uniq([...pool, ...res.data.api_origins])
-          }
-          // 如果当前 API 可用，则切换所有流量到该域名
-          API_ORIGIN = origin
-          pool = uniq([origin, ...pool]) // 将当前 API 域名添加到列表顶部
-          POOL = pool
-          return pool
-        } catch (e) {
-          i++
-        }
-      }
-      return POOL
-    },
-    { ttl: 1000 * 60 * 60, refreshFallbackToCache: true } // 1小时缓存，失败时使用旧缓存
-  )
+// 是否是 ChatboxAI 的请求（兼容旧逻辑，现在全部走自定义后端）
+export function isChatboxAPI(_input: RequestInfo | URL): boolean {
+  const origin = getAPIOrigin()
+  if (!origin) return false
+  const url = typeof _input === 'string' ? _input : (_input as Request).url ?? _input.toString()
+  return url.startsWith(origin)
+}
 
-  return result
+// 原 getChatboxAPIOrigin 改为 getAPIOrigin
+export const getChatboxAPIOrigin = getAPIOrigin
+
+// 不再需要探测定制 API 池
+export async function testApiOrigins() {
+  return [getAPIOrigin()].filter(Boolean)
+}
+
+// 不需要 API 后端的功能列表
+export const OFFLINE_FEATURES = [
+  'chat',           // 聊天（用第三方 API key）
+  'image-gen',      // 图片生成（用第三方 API key）
+] as const
+
+// 需要自定义后端的功能
+export const ONLINE_FEATURES = [
+  'email-login',    // 邮箱验证码登录
+  'web-search',     // 联网搜索（代理）
+  'file-parse',     // 文件解析
+  'mcp-builtin',    // 内置 MCP 服务
+  'copilots',       // 系统助手市场
+] as const
+
+// 检查是否需要后端
+export function needsApiBackend(feature: string): boolean {
+  return (ONLINE_FEATURES as readonly string[]).includes(feature)
 }
