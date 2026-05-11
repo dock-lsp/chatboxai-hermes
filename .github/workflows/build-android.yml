@@ -32,7 +32,7 @@ jobs:
         env:
           CHATBOX_BUILD_PLATFORM: web
           NODE_OPTIONS: '--max-old-space-size=4096'
-        run: pnpm run build:web
+        run: cross-env CHATBOX_BUILD_PLATFORM=web npx electron-vite build
 
       - name: 配置 Capacitor + Android
         run: |
