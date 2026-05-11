@@ -92,16 +92,11 @@ async function getAuthenticatedAfetch() {
 function getAPIOrigin() {
   if (USE_LOCAL_API) {
     return 'http://localhost:8002'
-  } else if (USE_BETA_API) {
+  }
+  if (USE_BETA_API) {
     return 'https://api-beta.chatboxai.app'
   }
-  // 优先使用用户自定义的后端地址（从 settings 中读取）
-  try {
-    const { settingsStore } = require('@/stores/settingsStore')
-    const customOrigin = settingsStore.getState().customApiOrigin
-    if (customOrigin) return customOrigin.replace(/\/+$/, '')
-  } catch {}
-  return chatboxaiAPI.getChatboxAPIOrigin()
+  return chatboxaiAPI.getAPIOrigin()
 }
 
 export function getChatboxOrigin() {

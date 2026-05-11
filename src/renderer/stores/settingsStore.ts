@@ -143,6 +143,12 @@ settingsStore.subscribe((state, prevState) => {
   if (Boolean(state.autoLaunch) !== Boolean(prevState.autoLaunch)) {
     platform.ensureAutoLaunch(state.autoLaunch)
   }
+  // 万象Chat: 同步自定义 API 后端地址
+  if (state.customApiOrigin !== prevState.customApiOrigin) {
+    import('../../shared/request/chatboxai_pool').then((m) => {
+      m.setCustomApiOrigin(state.customApiOrigin || '')
+    })
+  }
 })
 
 export function useSettingsStore<U>(selector: Parameters<typeof useStore<typeof settingsStore, U>>[1]) {
