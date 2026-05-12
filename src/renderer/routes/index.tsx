@@ -87,7 +87,7 @@ function Index() {
   const { copilots: remoteCopilots } = useRemoteCopilotsByCursor({ limit: 10 })
   const selectedCopilotId = useMemo(() => session?.copilotId, [session?.copilotId])
   const selectedCopilot = useMemo(
-    () => myCopilots.find((c) => c.id === selectedCopilotId) || remoteCopilots.find((c) => c.id === selectedCopilotId),
+    () => (Array.isArray(myCopilots) ? myCopilots.find((c) => c?.id === selectedCopilotId) : undefined) || (Array.isArray(remoteCopilots) ? remoteCopilots.find((c) => c?.id === selectedCopilotId) : undefined),
     [myCopilots, remoteCopilots, selectedCopilotId]
   )
   useEffect(() => {
@@ -472,16 +472,19 @@ const CopilotPicker = ({ selectedId, onSelect }: { selectedId?: string; onSelect
   const { copilots: remoteCopilots } = useRemoteCopilotsByCursor()
 
   const copilots = useMemo(
-    () =>
-      myCopilots.length >= MAX_COPILOTS_TO_SHOW
-        ? myCopilots
+    () => {
+      const safeMyCopilots = Array.isArray(myCopilots) ? myCopilots.filter((c) => c && c.id) : []
+      const safeRemoteCopilots = Array.isArray(remoteCopilots) ? remoteCopilots.filter((c) => c && c.id) : []
+      return safeMyCopilots.length >= MAX_COPILOTS_TO_SHOW
+        ? safeMyCopilots
         : [
-            ...myCopilots,
-            ...(myCopilots.length && remoteCopilots.length ? [undefined] : []),
-            ...remoteCopilots
-              .filter((c) => !myCopilots.map((mc) => mc.id).includes(c.id))
-              .slice(0, MAX_COPILOTS_TO_SHOW - myCopilots.length - 1),
-          ],
+            ...safeMyCopilots,
+            ...(safeMyCopilots.length && safeRemoteCopilots.length ? [undefined] : []),
+            ...safeRemoteCopilots
+              .filter((c) => !safeMyCopilots.map((mc) => mc.id).includes(c.id))
+              .slice(0, MAX_COPILOTS_TO_SHOW - safeMyCopilots.length - 1),
+          ]
+    },
     [myCopilots, remoteCopilots]
   )
 

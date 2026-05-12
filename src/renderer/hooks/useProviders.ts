@@ -57,7 +57,8 @@ export const useProviders = () => {
   const favoritedModels = useMemo(
     () =>
       settings.favoritedModels
-        ?.map((m) => {
+        ?.filter((m) => m?.provider && m?.model)
+        .map((m) => {
           const provider = providers.find((p) => p.id === m.provider)
           const model = (provider?.models || provider?.defaultSettings?.models)?.find((mm) => mm.modelId === m.model)
 
