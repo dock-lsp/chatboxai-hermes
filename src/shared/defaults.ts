@@ -80,6 +80,7 @@ export function settings(): Settings {
     backgroundImageKey: '',
     theme: Theme.System,
     language: 'en',
+    licenseKey: 'free', // 万象Chat 免费模式
     fontSize: 14,
     spellCheck: true,
 

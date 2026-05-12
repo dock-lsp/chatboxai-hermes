@@ -23,7 +23,7 @@ export const useProviders = () => {
       allProviderBaseInfos
         .map((p) => {
           const providerSettings = mergeSharedOAuthProviderSettings(p.id, providerSettingsMap)
-          if (p.id === ModelProviderEnum.ChatboxAI && settings.licenseKey) {
+          if (p.id === ModelProviderEnum.ChatboxAI) {
             return {
               ...p,
               ...providerSettings,
@@ -51,7 +51,7 @@ export const useProviders = () => {
           }
         })
         .filter((p) => !!p),
-    [providerSettingsMap, allProviderBaseInfos, chatboxAIModels, settings.licenseKey]
+    [providerSettingsMap, allProviderBaseInfos, chatboxAIModels]
   )
 
   const favoritedModels = useMemo(
