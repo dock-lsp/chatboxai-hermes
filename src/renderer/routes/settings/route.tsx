@@ -2,6 +2,7 @@ import { ActionIcon, Box, Flex, Indicator, Stack, Text } from '@mantine/core'
 import {
   IconAdjustmentsHorizontal,
   IconBook,
+  IconBrain,
   IconBox,
   IconCategory,
   IconChevronLeft,
@@ -84,6 +85,11 @@ const ITEMS = [
           icon: <IconKeyboard className="w-full h-full" />,
         },
       ]),
+  {
+    key: 'hermes',
+    label: 'Hermes AI',
+    icon: <IconBrain className="w-full h-full" />,
+  },
   {
     key: 'general',
     label: 'General Settings',
