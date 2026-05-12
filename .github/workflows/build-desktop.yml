@@ -69,21 +69,21 @@ jobs:
 
       - name: 上传 Windows 安装包
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 万象Chat-Windows
           path: release/build/*.exe
 
       - name: 上传 Linux AppImage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 万象Chat-Linux-AppImage
           path: release/build/*.AppImage
 
       - name: 上传 Linux deb
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 万象Chat-Linux-deb
           path: release/build/*.deb
@@ -125,7 +125,7 @@ jobs:
 
       - name: 上传 macOS dmg
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 万象Chat-macOS
           path: release/build/*.dmg
