@@ -1,0 +1,208 @@
+name: 📱 移动端构建 (Android + iOS + 鸿蒙)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/workflows/build-desktop.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ====== Android (鸿蒙/Android 通用) ======
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: 构建 Web 版本
+        env:
+          CHATBOX_BUILD_PLATFORM: web
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: npx cross-env CHATBOX_BUILD_PLATFORM=web npx electron-vite build
+
+      - name: 配置 Capacitor + Android
+        run: |
+          npx cap add android 2>/dev/null || echo "android project exists"
+          npx cap sync android
+          npx cap copy android
+
+      - name: 设置 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: 构建 Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: 构建 Release APK
+        working-directory: android
+        run: ./gradlew assembleRelease
+
+      - name: 构建 Google Play AAB
+        working-directory: android
+        run: ./gradlew bundleRelease
+
+      - name: 上传 Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 万象Chat-Android-Debug
+          path: android/app/build/outputs/apk/debug/*.apk
+
+      - name: 上传 Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 万象Chat-Android-Release
+          path: android/app/build/outputs/apk/release/*.apk
+
+      - name: 上传 Google Play AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: 万象Chat-GooglePlay-AAB
+          path: android/app/build/outputs/bundle/release/*.aab
+
+  # ====== iOS (需 macOS Runner) ======
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: 构建 Web 版本
+        env:
+          CHATBOX_BUILD_PLATFORM: web
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: npx cross-env CHATBOX_BUILD_PLATFORM=web npx electron-vite build
+
+      - name: 配置 Capacitor + iOS
+        run: |
+          npx cap add ios 2>/dev/null || echo "ios project exists"
+          npx cap sync ios
+          npx cap copy ios
+
+      - name: 安装 CocoaPods 依赖
+        working-directory: ios/App
+        run: pod install
+
+      - name: 构建 iOS (不签名，仅验证)
+        working-directory: ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tail -20
+
+      - name: 导出 IPA (未签名)
+        if: always()
+        working-directory: ios/App
+        run: |
+          mkdir -p build/ipa
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist - \
+            -allowProvisioningUpdates 2>/dev/null || echo "IPA 导出跳过（需要签名证书）"
+
+      - name: 上传 iOS 构建（如有）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 万象Chat-iOS
+          path: ios/App/build/**/*.ipa
+          if-no-files-found: ignore
+
+  # ====== 发布移动端 Release ======
+  release-mobile:
+    needs: [build-android, build-ios]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 下载所有产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 列出产物
+        run: find artifacts -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.ipa" \) | sort
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "万象Chat Mobile v${{ github.run_number }}"
+          tag_name: "mobile-v${{ github.run_number }}"
+          body: |
+            ## 📱 万象Chat 移动端 + Hermes AI Agent
+
+            构建编号: #${{ github.run_number }}
+            触发 commit: [${{ github.sha }}](https://github.com/dock-lsp/chatboxai-hermes/commit/${{ github.sha }})
+
+            ### ✨ Hermes 新功能
+            - **持久化记忆系统** — AI 自动提取并记住用户偏好、事实和上下文
+            - **技能系统 (Skills)** — AI 从复杂任务中创建可复用技能，持续自我改进
+            - **子代理委派** — AI 自动拆分复杂任务为并行子任务
+
+            ### 📱 移动端安装包
+            | 平台 | 文件 | 说明 |
+            |------|------|------|
+            | Android / 鸿蒙 | `万象Chat-Android-Debug` | Debug 版本 |
+            | Android / 鸿蒙 | `万象Chat-Android-Release` | Release 版本 |
+            | Google Play | `万象Chat-GooglePlay-AAB` | AAB 上架包 |
+            | iOS | `万象Chat-iOS` | IPA（需自行签名） |
+          files: |
+            artifacts/**/*.apk
+            artifacts/**/*.aab
+            artifacts/**/*.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

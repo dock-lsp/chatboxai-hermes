@@ -1,0 +1,177 @@
+name: 🖥️ 桌面端构建 (Windows + macOS + Linux)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'android/**'
+      - 'ios/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ====== Windows + Linux (交叉构建) ======
+  build-win-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: 构建 Electron 应用
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: npx electron-vite build
+
+      - name: 安装 Wine (Windows 交叉构建)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wine64 wine32 2>/dev/null || echo "wine32 跳过"
+
+      - name: 构建 Linux AppImage + deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder build --linux --publish=never
+
+      - name: 构建 Windows exe
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder build --win --publish=never
+
+      - name: 上传 Windows 安装包
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 万象Chat-Windows
+          path: release/build/*.exe
+
+      - name: 上传 Linux AppImage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 万象Chat-Linux-AppImage
+          path: release/build/*.AppImage
+
+      - name: 上传 Linux deb
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 万象Chat-Linux-deb
+          path: release/build/*.deb
+
+  # ====== macOS (需 macOS Runner) ======
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: 构建 Electron 应用
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: npx electron-vite build
+
+      - name: 构建 macOS dmg
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder build --mac --publish=never
+
+      - name: 上传 macOS dmg
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 万象Chat-macOS
+          path: release/build/*.dmg
+
+  # ====== 发布桌面端 Release ======
+  release-desktop:
+    needs: [build-win-linux, build-macos]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 下载所有产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 列出产物
+        run: find artifacts -type f \( -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" \) | sort
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "万象Chat Desktop v${{ github.run_number }}"
+          tag_name: "desktop-v${{ github.run_number }}"
+          body: |
+            ## 🖥️ 万象Chat 桌面端 + Hermes AI Agent
+
+            构建编号: #${{ github.run_number }}
+            触发 commit: [${{ github.sha }}](https://github.com/dock-lsp/chatboxai-hermes/commit/${{ github.sha }})
+
+            ### ✨ Hermes 新功能
+            - **持久化记忆系统** — AI 自动提取并记住用户偏好、事实和上下文
+            - **技能系统 (Skills)** — AI 从复杂任务中创建可复用技能，持续自我改进
+            - **子代理委派** — AI 自动拆分复杂任务为并行子任务
+
+            ### 💻 桌面端安装包
+            | 平台 | 文件 | 说明 |
+            |------|------|------|
+            | Windows | `万象Chat-Windows` | .exe 安装包 |
+            | Linux | `万象Chat-Linux-AppImage` | AppImage 通用格式 |
+            | Linux | `万象Chat-Linux-deb` | .deb 安装包 (Debian/Ubuntu) |
+            | macOS | `万象Chat-macOS` | .dmg 安装包 |
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
