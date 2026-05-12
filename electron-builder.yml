@@ -1,5 +1,5 @@
-productName: Chatbox
-appId: xyz.chatboxapp.app
+productName: 万象Chat
+appId: com.wanxiang.chat
 asar: true
 asarUnpack:
   - "**\\*.{node,dll}"
