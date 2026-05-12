@@ -92,11 +92,10 @@ async function handleSearchResult(
 async function ocrMessages(messages: Message[]) {
   const settings = settingsStore.getState().getSettings()
   const hasUserOcrModel = settings.ocrModel?.provider && settings.ocrModel?.model
-  const hasLicenseKey = !!settings.licenseKey
 
-  if (!hasUserOcrModel && !hasLicenseKey) {
-    // No user-configured OCR model and no Chatbox AI license — cannot perform OCR
-    throw ChatboxAIAPIError.fromCodeName('model_not_support_image_2', 'model_not_support_image_2')
+  if (!hasUserOcrModel) {
+    // 万象Chat 免费模式：没有配置 OCR 模型时使用 ChatboxAI 内置 OCR
+    // Fallback to Chatbox AI built-in OCR model
   }
 
   const ocrProviderName = hasUserOcrModel ? settings.ocrModel!.provider : 'Chatbox AI'

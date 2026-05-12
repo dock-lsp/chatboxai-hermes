@@ -41,7 +41,8 @@ function getChatboxHeaders() {
  * Get the license key from settings
  */
 function getLicenseKey(): string | undefined {
-  return store.get('settings.licenseKey') as string | undefined
+  // 万象Chat 免费模式：始终返回 free license key
+  return (store.get('settings.licenseKey') as string | undefined) || 'free'
 }
 
 /**

@@ -25,11 +25,8 @@ const log = getLogger('image-generation-actions')
 let currentAbortController: AbortController | null = null
 
 function getLicenseKey(): string {
-  const licenseKey = settingsStore.getState().licenseKey
-  if (!licenseKey) {
-    throw new Error('License key is required for image generation')
-  }
-  return licenseKey
+  // 万象Chat 免费模式：不再抛出异常
+  return settingsStore.getState().licenseKey || 'free'
 }
 
 function shouldUseAsyncPath(provider: string): boolean {

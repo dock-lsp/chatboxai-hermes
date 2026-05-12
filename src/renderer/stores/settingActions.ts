@@ -50,7 +50,8 @@ export function getProxy() {
 }
 
 export function getLicenseKey() {
-  return settingsStore.getState().licenseKey
+  // 万象Chat 免费模式：始终返回免费 license key
+  return settingsStore.getState().licenseKey || 'free'
 }
 
 export function getLicenseDetail() {
@@ -58,11 +59,13 @@ export function getLicenseDetail() {
 }
 
 export function isPaid() {
-  return !!getLicenseKey()
+  // 万象Chat 免费模式：所有功能永久免费
+  return true
 }
 
 export function isPro() {
-  return !!getLicenseKey() && !getLicenseDetail()?.name.toLowerCase().includes('lite')
+  // 万象Chat 免费模式：所有功能永久免费
+  return true
 }
 
 export function getRemoteConfig() {

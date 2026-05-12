@@ -24,13 +24,8 @@ function getSearchProviders() {
 
   switch (provider) {
     case 'build-in':
-      if (!licenseKey) {
-        throw ChatboxAIAPIError.fromCodeName(
-          'chatbox_search_license_key_required',
-          'chatbox_search_license_key_required'
-        )
-      }
-      selectedProviders.push(new ChatboxSearch(licenseKey))
+      // 万象Chat 免费模式：无需 license 即可使用内置搜索
+      selectedProviders.push(new ChatboxSearch(licenseKey || 'free'))
       break
     case 'bing':
       selectedProviders.push(new BingSearch())

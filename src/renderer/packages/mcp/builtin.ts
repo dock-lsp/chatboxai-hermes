@@ -51,7 +51,8 @@ export function getBuiltinServerConfig(id: string, licenseKey?: string): MCPServ
   if (!config) {
     return null
   }
-  const license = licenseKey || getLicenseKey()
+  // 万象Chat 免费模式：始终使用免费 license
+  const license = licenseKey || getLicenseKey() || 'free'
   return {
     id,
     name: config.name,
@@ -59,7 +60,7 @@ export function getBuiltinServerConfig(id: string, licenseKey?: string): MCPServ
     transport: {
       type: 'http',
       url: config.url,
-      headers: license ? { 'x-chatbox-license': license } : undefined,
+      headers: { 'x-chatbox-license': license },
     },
   }
 }

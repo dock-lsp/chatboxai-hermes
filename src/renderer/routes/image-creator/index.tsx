@@ -331,8 +331,8 @@ function ImageCreatorPage() {
     if (!prompt.trim() || isCurrentlyGenerating) return
 
     if (selectedProvider === ModelProviderEnum.ChatboxAI && !settingsStore.getState().licenseKey) {
-      toastActions.add(t('Please log in to Chatbox AI first'))
-      return
+      // 万象Chat 免费模式：自动使用免费 license
+      // Free mode: auto-use free license
     }
 
     try {
@@ -367,8 +367,7 @@ function ImageCreatorPage() {
       if (isCurrentlyGenerating) return
 
       if (selectedProvider === ModelProviderEnum.ChatboxAI && !settingsStore.getState().licenseKey) {
-        toastActions.add(t('Please log in to Chatbox AI first'))
-        return
+        // 万象Chat 免费模式：自动使用免费 license
       }
 
       try {
