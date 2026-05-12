@@ -81,25 +81,13 @@ export const LoginView = forwardRef<HTMLDivElement, LoginViewProps>(
               </Button>
               <Text c="chatbox-tertiary">
                 {t('By continuing, you agree to our')}{' '}
-                <Anchor
-                  size="sm"
-                  href="https://chatboxai.app/terms"
-                  target="_blank"
-                  underline="hover"
-                  c="chatbox-tertiary"
-                >
+                <Text size="sm" span c="chatbox-tertiary">
                   {t('Terms of Service')}
-                </Anchor>
+                </Text>
                 . {t('Read our')}{' '}
-                <Anchor
-                  size="sm"
-                  href="https://chatboxai.app/privacy"
-                  target="_blank"
-                  underline="hover"
-                  c="chatbox-tertiary"
-                >
+                <Text size="sm" span c="chatbox-tertiary">
                   {t('Privacy Policy')}
-                </Anchor>
+                </Text>
                 .
               </Text>
             </Stack>

@@ -31,7 +31,6 @@ import BrandWechat from '@/components/icons/BrandWechat'
 import Page from '@/components/layout/Page'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import useVersion from '@/hooks/useVersion'
-import { buildChatboxUrl } from '@/packages/remote'
 import platform from '@/platform'
 import iconPNG from '@/static/icon.png'
 import IMG_WECHAT_QRCODE from '@/static/wechat_qrcode.png'
@@ -42,9 +41,8 @@ export const Route = createFileRoute('/about')({
 })
 
 function RouteComponent() {
-  const { t, i18n: _i18n } = useTranslation()
+  const { t } = useTranslation()
   const version = useVersion()
-  const language = useLanguage()
   const isSmallScreen = useIsSmallScreen()
 
   return (
@@ -58,39 +56,17 @@ function RouteComponent() {
                 <Title order={5} lh={1.5} lineClamp={1} title={`Chatbox v${version.version}`}>
                   Chatbox {/\d/.test(version.version) ? `(v${version.version})` : ''}
                 </Title>
-
-                <Button
-                  size="xs"
-                  variant="default"
-                  radius="xl"
-                  className="flex-shrink-0"
-                  onClick={() => platform.openLink(buildChatboxUrl(`/redirect_app/check_update/${language}`))}
-                >
-                  {t('Check Update')}
-                </Button>
               </Flex>
               <Text>{t('about-slogan')}</Text>
               <Text c="chatbox-tertiary">{t('about-introduction')}</Text>
 
               <Flex gap="sm">
-                <Anchor
-                  size="sm"
-                  href="https://chatboxai.app/privacy"
-                  target="_blank"
-                  underline="hover"
-                  c="chatbox-tertiary"
-                >
+                <Text size="sm" c="chatbox-tertiary">
                   {t('Privacy Policy')}
-                </Anchor>
-                <Anchor
-                  size="sm"
-                  href="https://chatboxai.app/terms"
-                  target="_blank"
-                  underline="hover"
-                  c="chatbox-tertiary"
-                >
+                </Text>
+                <Text size="sm" c="chatbox-tertiary">
                   {t('User Terms')}
-                </Anchor>
+                </Text>
               </Flex>
             </Stack>
           </Flex>
@@ -99,19 +75,13 @@ function RouteComponent() {
             <ListItem
               icon={<BrandGithub className="w-full h-full" />}
               title={t('Github')}
-              link="https://github.com/chatboxai/chatbox"
+              link=""
               value="chatbox"
             />
-            {/* <ListItem
-              icon={<BrandX className="w-full h-full" />}
-              title={t('X(Twitter)')}
-              link="https://x.com/ChatboxAI_HQ"
-              value="@ChatboxAI_HQ"
-            /> */}
             <ListItem
               icon={<BrandRedNote className="w-full h-full" />}
               title={t('RedNote')}
-              link="https://www.xiaohongshu.com/user/profile/67b581b6000000000e01d11f"
+              link=""
               value="@63844903136"
             />
             <ListItem icon={<BrandWechat className="w-full h-full" />} title={t('WeChat')} right={<WechatQRCode />} />
@@ -121,22 +91,22 @@ function RouteComponent() {
             <ListItem
               icon={<IconHome className="w-full h-full" />}
               title={t('Homepage')}
-              link={buildChatboxUrl(`/redirect_app/homepage/${language}`)}
+              link=""
             />
             <ListItem
               icon={<IconClipboard className="w-full h-full" />}
               title={t('Survey')}
-              link={_i18n.language === 'zh-Hans' ? 'https://jsj.top/f/fcMYEa' : 'https://jsj.top/f/RUMbvY'}
+              link=""
             />
             <ListItem
               icon={<IconPencil className="w-full h-full" />}
               title={t('Feedback')}
-              link={buildChatboxUrl(`/redirect_app/feedback/${language}`)}
+              link=""
             />
             <ListItem
               icon={<IconFileText className="w-full h-full" />}
               title={t('Changelog')}
-              link={`https://chatboxai.app/${language.split('-')[0] || 'en'}/help-center/changelog`}
+              link=""
             />
             <ListItem
               icon={<IconMail className="w-full h-full" />}
@@ -147,17 +117,10 @@ function RouteComponent() {
             <ListItem
               icon={<IconMessage2 className="w-full h-full" />}
               title={t('FAQs')}
-              link={`https://chatboxai.app/${language.split('-')[0] || 'en'}/help-center/chatbox-ai-service-faqs`}
+              link=""
             />
           </List>
         </Stack>
-
-        {/* 开发环境下显示错误测试面板 */}
-        {/* {process.env.NODE_ENV === 'development' && (
-          <div className="mt-8 max-w-md">
-            <ErrorTestPanel />
-          </div>
-        )} */}
       </Container>
     </Page>
   )
@@ -238,4 +201,3 @@ function ListItem({
     </Flex>
   )
 }
-

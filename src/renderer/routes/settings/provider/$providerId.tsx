@@ -512,9 +512,7 @@ function ProviderSettings({ providerId }: { providerId: string }) {
         <Flex>
           <ScalableIcon icon={IconHelpCircle} />
           <Text span size="xs" c="chatbox-tertiary">
-            <a href="https://docs.chatboxai.app/guides/providers" target="_blank" rel="noopener">
-              {t('Setup guide')}
-            </a>
+            {t('Setup guide')}
           </Text>
         </Flex>
       )}

@@ -142,13 +142,13 @@ export function EmailCodeLoginModal({ opened, onClose, language, onLoginSuccess 
 
         <Text size="xs" c="chatbox-tertiary">
           {t('By continuing, you agree to our')}{' '}
-          <Anchor size="xs" href="https://chatboxai.app/terms" target="_blank" underline="hover">
+          <Text size="xs" span>
             {t('Terms of Service')}
-          </Anchor>
+          </Text>
           . {t('Read our')}{' '}
-          <Anchor size="xs" href="https://chatboxai.app/privacy" target="_blank" underline="hover">
+          <Text size="xs" span>
             {t('Privacy Policy')}
-          </Anchor>
+          </Text>
           .
         </Text>
 

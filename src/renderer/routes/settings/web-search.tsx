@@ -430,7 +430,7 @@ export function RouteComponent() {
                 pageName: JK_PAGE_NAMES.SETTING_PAGE,
                 content: 'settings_websearch',
               })
-              platform.openLink('https://chatboxai.app/login')
+              platform.openLink('')
             }}
           >
             {t('You can ')}

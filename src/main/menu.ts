@@ -198,13 +198,13 @@ export default class MenuBuilder {
         {
           label: 'Learn More',
           click() {
-            shell.openExternal('https://chatboxai.app')
+            // 已移除外部链接
           },
         },
         {
           label: 'Github Repo',
           click() {
-            shell.openExternal('https://github.com/chatboxai/chatbox')
+            // 已移除外部链接
           },
         },
         // {
@@ -216,7 +216,7 @@ export default class MenuBuilder {
         {
           label: 'Search Issues',
           click() {
-            shell.openExternal('https://github.com/chatboxai/chatbox/issues?q=is%3Aissue')
+            // 已移除外部链接
           },
         },
       ],
@@ -289,13 +289,13 @@ export default class MenuBuilder {
           {
             label: 'Learn More',
             click() {
-              shell.openExternal('https://chatboxai.app')
+              // 已移除外部链接
             },
           },
           {
             label: 'Github Repo',
             click() {
-              shell.openExternal('https://github.com/chatboxai/chatbox')
+              // 已移除外部链接
             },
           },
           // {
@@ -307,7 +307,7 @@ export default class MenuBuilder {
           {
             label: 'Search Issues',
             click() {
-              shell.openExternal('https://github.com/chatboxai/chatbox/issues?q=is%3Aissue')
+              // 已移除外部链接
             },
           },
         ],

@@ -315,7 +315,9 @@ export const LoggedInView = forwardRef<HTMLDivElement, LoggedInViewProps>(
                 c="chatbox-tertiary"
                 px={0}
                 h={24}
-                onClick={() => platform.openLink('https://chatboxai.app')}
+                onClick={() => {
+                  // 已移除外部链接
+                }}
               >
                 <ScalableIcon icon={IconExternalLink} size={24} />
               </Button>

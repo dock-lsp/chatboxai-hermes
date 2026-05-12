@@ -59,7 +59,9 @@ export const LicenseKeyView = forwardRef<HTMLDivElement, LicenseKeyViewProps>(({
             c="chatbox-tertiary"
             px={0}
             h={24}
-            onClick={() => platform.openLink('https://chatboxai.app')}
+            onClick={() => {
+              // 已移除外部链接
+            }}
           >
             <ScalableIcon icon={IconExternalLink} size={24} />
           </Button>
@@ -75,33 +77,6 @@ export const LicenseKeyView = forwardRef<HTMLDivElement, LicenseKeyViewProps>(({
               href={buildChatboxUrl(
                 `/redirect_app/how_to_use_license/${language}?utm_source=app&utm_content=provider_cb_key_howtouse`
               )}
-              target="_blank"
-            >
-              {t('How to use?')}
-            </Text>
-          </Flex>
-          <Flex gap="xs" align="center">
-            <UnstyledButton onClick={onSwitchToLogin}>
-              <Flex gap="xxs" align="center">
-                <ScalableIcon icon={IconArrowLeft} size={16} className="!text-chatbox-tint-brand" />
-                <Text span className="!text-chatbox-tint-brand">
-                  {t('Back to Login')}
-                </Text>
-              </Flex>
-            </UnstyledButton>
-          </Flex>
-        </Flex>
-      </Flex>
-      <Flex gap="xs" align="center" justify="flex-start" className="md:hidden">
-        <Flex gap="xxs" align="center" c="chatbox-brand" className="mr-4">
-          <ScalableIcon icon={IconHelp} />
-          <Text
-            component="a"
-            c="chatbox-brand"
-            className="!underline"
-            href={buildChatboxUrl(
-              `/redirect_app/how_to_use_license/${language}?utm_source=app&utm_content=provider_cb_key_howtouse`
-            )}
             target="_blank"
           >
             {t('How to use?')}
