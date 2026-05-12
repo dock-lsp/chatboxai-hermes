@@ -65,7 +65,7 @@ i18n.use(initReactI18next).init({
       translation: nbNO,
     },
   },
-  fallbackLng: 'en',
+  fallbackLng: 'zh-Hans', // 万象Chat 默认中文
 
   interpolation: {
     escapeValue: false,
