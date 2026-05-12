@@ -3,8 +3,6 @@ name: 📱 移动端构建 (Android + iOS + 鸿蒙)
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '.github/workflows/build-desktop.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -28,8 +26,7 @@ jobs:
 
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
+        # version 从 package.json 的 packageManager 字段自动读取
 
       - name: 安装 Node.js
         uses: actions/setup-node@v4
@@ -100,8 +97,7 @@ jobs:
 
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
+        # version 从 package.json 的 packageManager 字段自动读取
 
       - name: 安装 Node.js
         uses: actions/setup-node@v4
