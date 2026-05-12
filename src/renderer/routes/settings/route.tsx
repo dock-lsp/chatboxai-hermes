@@ -22,6 +22,7 @@ import { Toaster } from 'sonner'
 import Divider from '@/components/common/Divider'
 import Page from '@/components/layout/Page'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
+import { HermesSettingsTab } from '@/components/hermes'
 import { useProviders } from '@/hooks/useProviders'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import platform from '@/platform'
@@ -231,7 +232,7 @@ export function SettingsRoot() {
       )}
       {!(isSmallScreen && routerState.location.pathname === '/settings') && (
         <Box flex="1 1 80%" className="overflow-auto">
-          <Outlet />
+          {key === 'hermes' ? <HermesSettingsTab /> : <Outlet />}
         </Box>
       )}
     </Flex>
