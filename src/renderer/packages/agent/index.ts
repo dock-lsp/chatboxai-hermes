@@ -65,6 +65,7 @@ export {
   getGitHubReadmeTool,
   createGitHubIssueTool,
   searchGitHubCodeTool,
+  cloneGitHubRepoTool,
   githubTools,
   // 新增 GitHub 工具
   setGitHubTokenTool,
@@ -86,6 +87,19 @@ export {
   createIssue,
   searchCode,
 } from './tools/github'
+
+// Git 执行器
+export {
+  executeGitClone,
+  checkGitInstalled,
+  getDefaultCloneDir,
+  ensureDir,
+  executeGitInit,
+  executeGitAdd,
+  executeGitCommit,
+  executeGitPush,
+  executeGitWorkflow,
+} from './tools/git-executor'
 
 // 项目生成器工具
 export {
