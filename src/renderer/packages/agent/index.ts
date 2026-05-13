@@ -134,7 +134,6 @@ export {
   readTextFile,
   isImageFile,
   isZipFile,
-  readZipFile,
   formatFileSize,
   analyzeFileForAI,
   getFileIconType,
