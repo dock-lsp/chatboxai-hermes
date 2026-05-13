@@ -6,7 +6,7 @@
 
 import { Button, Card, Collapse, Group, NumberInput, Slider, Stack, Switch, Text, Title } from '@mantine/core'
 import { IconBrain, IconChevronDown, IconChevronRight, IconListDetails, IconRobot } from '@tabler/icons-react'
-import { createStore } from 'zustand'
+import { create } from 'zustand'
 import { memo, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import MemoryPanel from './MemoryPanel'
@@ -47,7 +47,7 @@ export type HermesSettingsStore = HermesSettingsState & HermesSettingsActions
  * Hermes 设置 Store
  * 使用 zustand 管理设置状态
  */
-export const useHermesSettingsStore = createStore<HermesSettingsStore>()((set) => ({
+export const useHermesSettingsStore = create<HermesSettingsStore>((set) => ({
   // 默认值
   memoryEnabled: true,
   skillsEnabled: true,
