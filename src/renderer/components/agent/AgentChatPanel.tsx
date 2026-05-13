@@ -31,6 +31,7 @@ import {
   Loader,
   ThemeIcon,
   Flex,
+  Select,
 } from '@mantine/core'
 import {
   IconSend,
@@ -65,6 +66,9 @@ import {
 import { ThoughtProcess } from './ThoughtProcess'
 import { ToolSelector } from './ToolSelector'
 import Markdown from '@/components/Markdown'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useProviders } from '@/hooks/useProviders'
+import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 
 /**
  * 消息气泡组件属性
@@ -472,6 +476,14 @@ export function AgentChatPanel({
   const stopGeneration = useAgentStore((state) => state.stopGeneration)
   const agent = useAgentStore((state) => state.agent)
 
+  // 模型选择状态
+  const { getSettings } = useSettingsStore()
+  const { providers } = useProviders()
+  const [selectedModel, setSelectedModel] = useState<{provider: string, modelId: string}>(() => {
+    const lastUsed = lastUsedModelStore.getState().chat
+    return lastUsed || { provider: '', modelId: '' }
+  })
+
   // UI 状态
   const [toolSelectorOpened, { toggle: toggleToolSelector }] = useDisclosure(false)
   const [thoughtPanelOpened, { toggle: toggleThoughtPanel }] = useDisclosure(true)
@@ -513,9 +525,10 @@ export function AgentChatPanel({
       })
 
       try {
-        // 使用 Agent 的流式发送方法
+        // 使用 Agent 的流式发送方法，传入模型配置
         const stream = agent.sendMessageStream(currentSessionId, content, {
           signal: abortController.signal,
+          modelConfig: selectedModel.provider && selectedModel.modelId ? selectedModel : undefined,
         })
 
         for await (const chunk of stream) {
@@ -579,7 +592,7 @@ export function AgentChatPanel({
         })
       }
     },
-    [session, createSession, agent]
+    [session, createSession, agent, selectedModel]
   )
 
   // 清空对话
@@ -723,6 +736,33 @@ export function AgentChatPanel({
 
           {/* 输入区域 */}
           <Box p="md" style={{ borderTop: '1px solid #eee' }}>
+            {/* 模型选择器 */}
+            <Group gap="xs" mb="xs">
+              <Select
+                size="xs"
+                placeholder="选择模型"
+                value={selectedModel.provider && selectedModel.modelId ? `${selectedModel.provider}/${selectedModel.modelId}` : ''}
+                onChange={(value) => {
+                  if (value) {
+                    const [provider, ...modelParts] = value.split('/')
+                    const modelId = modelParts.join('/')
+                    setSelectedModel({ provider, modelId })
+                    // 更新 lastUsedModelStore
+                    lastUsedModelStore.getState().setChatModel(provider, modelId)
+                  } else {
+                    setSelectedModel({ provider: '', modelId: '' })
+                  }
+                }}
+                data={providers.flatMap((provider) =>
+                  (provider.models || []).map((model) => ({
+                    value: `${provider.id}/${model.modelId}`,
+                    label: `${provider.name}/${model.name}`,
+                  }))
+                )}
+                style={{ flex: 1, maxWidth: 300 }}
+                disabled={isGenerating}
+              />
+            </Group>
             <Group gap="xs">
               <ChatInput
                 onSend={handleSendMessage}

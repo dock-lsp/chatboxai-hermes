@@ -630,7 +630,8 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
     if (generatedFiles.length === 0) return
     // 这里应该调用 Electron 的 IPC 或文件系统 API 保存文件
     console.log('保存项目文件:', generatedFiles.map((f) => f.path))
-    alert('项目保存功能需要集成文件系统 API')
+    // 静默处理，不使用弹窗
+    console.log('项目保存功能需要集成文件系统 API')
   }, [generatedFiles])
 
   return (

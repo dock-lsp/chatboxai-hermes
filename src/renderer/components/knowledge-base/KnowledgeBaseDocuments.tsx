@@ -37,7 +37,7 @@ import {
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+// import { toast } from 'sonner'  // 禁用 toast 弹窗
 import { useKnowledgeBaseFiles, useKnowledgeBaseFilesActions, useKnowledgeBaseFilesCount } from '@/hooks/knowledge-base'
 import { useChunksPreview } from '@/hooks/useChunksPreview'
 import platform from '@/platform'
@@ -265,7 +265,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
           if (result.status === 'rejected') {
             const fileName = correctedFiles[uploadResults.indexOf(result)]?.name || 'Unknown file'
             console.error(`[Upload] Failed to upload file ${fileName}:`, result.reason)
-            toast.error(
+            console.error(
               t('Failed to upload {{filename}}: {{error}}', {
                 filename: fileName,
                 error: (result.reason as Error)?.message || 'Unknown error',
@@ -274,24 +274,15 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
           }
         })
 
-        // Provide appropriate user feedback
+        // Provide appropriate user feedback (静默处理，不使用 toast)
         if (successfulUploads.length > 0 && failedUploads.length === 0) {
           console.log(`[Upload] All files uploaded successfully.`)
-          toast.success(t('Successfully uploaded {{count}} file(s)', { count: successfulUploads.length }))
         } else if (successfulUploads.length > 0 && failedUploads.length > 0) {
           console.log(
             `[Upload] Partial success: ${successfulUploads.length} succeeded, ${failedUploads.length} failed.`
           )
-          toast.success(
-            t('Successfully uploaded {{success}} of {{total}} file(s). {{failed}} file(s) failed.', {
-              success: successfulUploads.length,
-              total: files.length,
-              failed: failedUploads.length,
-            })
-          )
         } else if (failedUploads.length === files.length) {
           console.log(`[Upload] All files failed to upload.`)
-          // Don't show additional error toast here since individual errors were already shown
         }
 
         // Track successful uploads only
@@ -310,11 +301,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         }
       } catch (error) {
         console.error('[Upload] Upload operation failed:', error)
-        toast.error(
-          t('Upload failed: {{error}}', {
-            error: (error as Error)?.message || 'Unknown error',
-          })
-        )
+        // 静默处理，不使用 toast
       }
     },
     [knowledgeBase?.id, knowledgeBase?.name, correctMimeType, refetch, refetchCount, invalidateFiles, isExpanded, t]
@@ -392,11 +379,11 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         }
       }
 
-      // Show warning for invalid files
+      // Show warning for invalid files (静默处理，不使用 toast)
       if (invalidFiles.length > 0) {
         const invalidFileNames = invalidFiles.map((f) => f.name).join(', ')
         const supportedTypes = getSupportedFileTypes()
-        toast.error(
+        console.error(
           t('{{count}} file(s) not supported: {{files}}. Supported formats: {{formats}}', {
             count: invalidFiles.length,
             files: invalidFileNames,
@@ -645,11 +632,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
       }, 10)
     } catch (error) {
       console.error('Failed to upload file:', error)
-      toast.error(
-        t('Failed to open file dialog: {{error}}', {
-          error: (error as Error)?.message || 'Unknown error',
-        })
-      )
+      // 静默处理，不使用 toast
     }
   }, [knowledgeBase?.id, getSupportedFileTypes, uploadFiles, t])
 

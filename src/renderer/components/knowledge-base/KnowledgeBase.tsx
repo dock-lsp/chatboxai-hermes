@@ -9,7 +9,7 @@ import flatten from 'lodash/flatten'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+// import { toast } from 'sonner'  // 禁用 toast 弹窗
 import { useProviders } from '@/hooks/useProviders'
 import * as remote from '@/packages/remote'
 import platform from '@/platform'
@@ -241,7 +241,8 @@ const KnowledgeBasePage: React.FC = () => {
         setKbList(list)
       }
     } catch (error) {
-      toast.error(t('Failed to fetch knowledge base list, Error: {{error}}', { error: error }))
+      // 静默处理，不使用 toast
+      console.error(t('Failed to fetch knowledge base list, Error: {{error}}', { error: error }))
     }
   }, [knowledgeBaseController, isUnsupportedPlatform, t])
 
@@ -273,7 +274,8 @@ const KnowledgeBasePage: React.FC = () => {
           setChatboxAIModels(config.knowledge_base_models)
         }
       } catch (error) {
-        toast.error(t('Failed to fetch Chatbox AI models config, Error: {{error}}', { error: error }))
+        // 静默处理，不使用 toast
+        console.error(t('Failed to fetch Chatbox AI models config, Error: {{error}}', { error: error }))
       }
     }
     fetchChatboxAIModels()
@@ -333,7 +335,8 @@ const KnowledgeBasePage: React.FC = () => {
       setShowCreate(false)
       fetchKbList()
     } catch (e) {
-      toast.error(t('Failed to create knowledge base, Error: {{error}}', { error: e }))
+      // 静默处理，不使用 toast
+      console.error(t('Failed to create knowledge base, Error: {{error}}', { error: e }))
     }
   }
 
@@ -358,7 +361,8 @@ const KnowledgeBasePage: React.FC = () => {
       setEditVisionModel(null)
       fetchKbList()
     } catch (e) {
-      toast.error(t('Failed to update knowledge base, Error: {{error}}', { error: e }))
+      // 静默处理，不使用 toast
+      console.error(t('Failed to update knowledge base, Error: {{error}}', { error: e }))
     }
   }
 

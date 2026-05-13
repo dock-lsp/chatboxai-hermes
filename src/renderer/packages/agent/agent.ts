@@ -131,21 +131,25 @@ export class Agent {
   /**
    * 创建模型实例
    * 使用万象Chat的 getModel() + settingsStore + lastUsedModelStore
+   * 优先使用传入的 modelConfig，否则使用 lastUsedModelStore
    */
-  private async createModelInstance(): Promise<ModelInterface> {
+  private async createModelInstance(
+    modelConfig?: { provider: string; modelId: string }
+  ): Promise<ModelInterface> {
     const globalSettings = settingsStore.getState().getSettings()
     const lastUsedChatModel = lastUsedModelStore.getState().chat
 
-    // 确定使用的模型
-    const provider = this.config.model
-      ? this.config.model.split('/')[0] || lastUsedChatModel?.provider
-      : lastUsedChatModel?.provider
+    // 确定使用的模型，优先使用传入的 modelConfig
+    const provider = modelConfig?.provider
+      || (this.config.model ? this.config.model.split('/')[0] : undefined)
+      || lastUsedChatModel?.provider
 
-    const modelId = this.config.model
-      ? this.config.model.split('/').slice(1).join('/') || lastUsedChatModel?.modelId
-      : lastUsedChatModel?.modelId
+    const modelId = modelConfig?.modelId
+      || (this.config.model ? this.config.model.split('/').slice(1).join('/') : undefined)
+      || lastUsedChatModel?.modelId
 
     if (!provider || !modelId) {
+      console.error('未配置模型，请先在设置中选择一个聊天模型')
       throw new Error('未配置模型，请先在设置中选择一个聊天模型')
     }
 
@@ -244,8 +248,8 @@ export class Agent {
     })
 
     try {
-      // 创建模型实例
-      const model = await this.createModelInstance()
+      // 创建模型实例，传入 modelConfig
+      const model = await this.createModelInstance(options.modelConfig)
 
       // 构造消息列表（排除 system 消息，streamText 会自行处理）
       const chatMessages = this.convertToMessages(session.messages)
@@ -358,6 +362,8 @@ export class Agent {
     content: string,
     options: {
       signal?: AbortSignal
+      modelConfig?: { provider: string; modelId: string }
+      enableTools?: boolean
     } = {}
   ): AsyncGenerator<StreamChunk> {
     const session = this.getOrCreateSession(sessionId)
@@ -385,8 +391,8 @@ export class Agent {
     }
 
     try {
-      // 创建模型实例
-      const model = await this.createModelInstance()
+      // 创建模型实例，传入 modelConfig
+      const model = await this.createModelInstance(options.modelConfig)
 
       // 发送思考步骤：正在分析
       const analyzingStep: ThoughtStep = {

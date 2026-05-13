@@ -4,7 +4,7 @@ import { IconCheck, IconTrash, IconX } from '@tabler/icons-react'
 import type React from 'react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+// import { toast } from 'sonner'  // 禁用 toast 弹窗
 import platform from '@/platform'
 import { ScalableIcon } from '../common/ScalableIcon'
 
@@ -280,7 +280,8 @@ export const DocumentParserSelector: React.FC<DocumentParserSelectorProps> = ({
 
   const handleTestConnection = useCallback(async () => {
     if (!mineruToken.trim()) {
-      toast.error(t('Please enter an API token'))
+      // 静默处理，不使用 toast
+      console.log(t('Please enter an API token'))
       return
     }
 
@@ -292,14 +293,17 @@ export const DocumentParserSelector: React.FC<DocumentParserSelectorProps> = ({
       setConnectionResult(result)
 
       if (result.success) {
-        toast.success(t('Connection successful'))
+        // 静默处理，不使用 toast
+        console.log(t('Connection successful'))
       } else {
-        toast.error(result.error || t('Connection failed'))
+        // 静默处理，不使用 toast
+        console.error(result.error || t('Connection failed'))
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       setConnectionResult({ success: false, error: errorMessage })
-      toast.error(errorMessage)
+      // 静默处理，不使用 toast
+      console.error(errorMessage)
     } finally {
       setTestingConnection(false)
     }

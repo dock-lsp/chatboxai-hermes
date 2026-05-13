@@ -3,7 +3,6 @@ import { spotlight } from '@mantine/spotlight'
 import { IconPlus } from '@tabler/icons-react'
 import { type FC, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { v4 as uuid } from 'uuid'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { useToggleMCPServer } from '@/hooks/mcp'
@@ -75,15 +74,15 @@ const CustomServersSection: FC<Props> = (props) => {
     })
     mcpController.updateServer(config)
     if (modal?.mode === 'add') {
-      toast.success(t('MCP server added'))
+      // 静默处理，不使用 toast
+      console.log('MCP server added')
     }
     setModal(null)
   }
 
   const handleServerDelete = (id: string) => {
-    if (!window.confirm(t('Are you sure you want to delete this server?')!)) {
-      return
-    }
+    // 静默处理删除，不使用 confirm 弹窗
+    console.log('Deleting server:', id)
     setSettings((draft) => {
       draft.mcp.servers = draft.mcp.servers.filter((s) => s.id !== id)
     })
@@ -125,13 +124,15 @@ const CustomServersSection: FC<Props> = (props) => {
     const servers = parseServersFromJson(content)
     trackEvent('import_mcp_servers_from_json', { count: servers.length })
     if (!servers.length) {
-      toast.error(t('No MCP servers parsed from clipboard'))
+      // 静默处理，不使用 toast
+      console.log('No MCP servers parsed from clipboard')
       return
     }
     setSettings((draft) => {
       draft.mcp.servers.push(...servers)
     })
-    toast.success(
+    // 静默处理，不使用 toast
+    console.log(
       t('{{count}} MCP servers imported', { count: servers.length }) + ': ' + servers.map((s) => s.name).join(', ')
     )
   }

@@ -5,7 +5,7 @@ import { formatFileSize } from '@shared/utils'
 import { IconAlertTriangle, IconFile, IconInfoCircle, IconRefresh } from '@tabler/icons-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+// import { toast } from 'sonner'  // 禁用 toast 弹窗
 import { Modal } from '@/components/layout/Overlay'
 import platform from '@/platform'
 
@@ -61,11 +61,13 @@ export function RemoteRetryModal({ opened, onClose, failedFiles, onSuccess }: Re
     try {
       const controller = platform.getKnowledgeBaseController()
       await controller.retryFile(fileId, true) // useRemoteParsing = true
-      toast.success(t('File {{filename}} queued for server parsing', { filename }))
+      // 静默处理，不使用 toast
+      console.log(t('File {{filename}} queued for server parsing', { filename }))
       onSuccess()
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      toast.error(t('Failed to retry {{filename}}: {{error}}', { filename, error: errorMessage }))
+      // 静默处理，不使用 toast
+      console.error(t('Failed to retry {{filename}}: {{error}}', { filename, error: errorMessage }))
     } finally {
       setRetryingIds((prev) => prev.filter((id) => id !== fileId))
     }
@@ -81,11 +83,12 @@ export function RemoteRetryModal({ opened, onClose, failedFiles, onSuccess }: Re
       const successCount = results.filter((r) => r.status === 'fulfilled').length
       const failCount = results.filter((r) => r.status === 'rejected').length
 
+      // 静默处理，不使用 toast
       if (successCount > 0) {
-        toast.success(t('{{count}} file(s) queued for server parsing', { count: successCount }))
+        console.log(t('{{count}} file(s) queued for server parsing', { count: successCount }))
       }
       if (failCount > 0) {
-        toast.error(t('{{count}} file(s) failed to queue', { count: failCount }))
+        console.error(t('{{count}} file(s) failed to queue', { count: failCount }))
       }
 
       onSuccess()
