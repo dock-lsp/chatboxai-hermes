@@ -2,7 +2,7 @@
  * agent.ts
  * AI 智能体核心模块
  *
- * 接入万象Chat已有的模型系统，使用 getModel() + streamText() 调用真实 AI。
+ * 接入万象Chat已有的模型系统，使用 getModel() + model.chat() 调用真实 AI。
  * 保留思考步骤可视化（从 AI 回复中提取 reasoningContent）。
  * 支持工具调用的结果展示。
  */
@@ -12,9 +12,10 @@ import { getModelSettings } from '@shared/utils/model_settings'
 import type { ModelInterface, OnResultChange } from '@shared/models/types'
 import type { Message, SessionSettings, Settings, StreamTextResult } from '@shared/types'
 import { createModelDependencies } from '@/adapters'
-import { streamText } from '@/packages/model-calls'
 import { settingsStore } from '@/stores/settingsStore'
 import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
+import { tool, type ToolSet } from 'ai'
+import { z } from 'zod'
 import type {
   Tool,
   ToolCall,
@@ -24,23 +25,65 @@ import type {
   AgentConfig,
   AgentResponse,
   StreamChunk,
-  ToolContext,
 } from './types'
+import {
+  searchGitHubReposTool,
+  getGitHubFileTool,
+  getGitHubRepoTool,
+  listGitHubDirTool,
+  getGitHubReadmeTool,
+  searchGitHubCodeTool,
+  cloneGitHubRepoTool,
+} from './tools/github'
+import {
+  projectGeneratorTool,
+  analyzeProjectRequirementsTool,
+} from './tools/project-generator'
+import {
+  webSearchTool,
+  fetchWebPageTool,
+  searchAndSummarizeTool,
+} from './tools/web-search'
 
 /**
  * 默认智能体系统提示
  */
 const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户完成各种任务。你可以使用多种工具来获取信息、执行操作和生成内容。
 
-当你需要获取最新信息时，使用网络搜索工具。
-当你需要查看代码示例或开源项目时，使用 GitHub 工具。
-当你需要创建新项目时，使用项目生成器工具。
+## 可用工具
 
-请遵循以下思考模式：
-1. 观察：理解用户的需求和问题
-2. 思考：分析如何最好地解决问题
-3. 行动：选择合适的工具执行
-4. 结果：根据工具返回的结果给出最终回答
+### 网络搜索工具
+- **web_search**: 搜索互联网获取最新信息。当你需要获取实时数据、新闻、技术文档或任何可能随时间变化的信息时使用。
+- **fetch_webpage**: 获取指定 URL 的网页内容。用于获取搜索结果的详细内容或特定网页的信息。
+- **search_and_summarize**: 搜索网络并返回摘要信息。适合快速获取某个主题的概览信息。
+
+### GitHub 工具
+- **github_search_repos**: 在 GitHub 上搜索仓库。用于查找开源项目、库或示例代码。
+- **github_get_repo**: 获取 GitHub 仓库的详细信息，包括星标数、语言、描述等。
+- **github_get_file**: 获取 GitHub 仓库中特定文件或目录的内容。
+- **github_list_dir**: 列出 GitHub 仓库中某个目录的内容。
+- **github_get_readme**: 获取 GitHub 仓库的 README 文件内容。
+- **github_search_code**: 在 GitHub 上搜索代码。可以搜索特定的代码片段、函数名等。
+- **clone_github_repo**: 克隆 GitHub 仓库到本地指定目录。当用户想要下载或使用某个 GitHub 项目时使用。
+
+### 项目生成器工具
+- **generate_project**: 根据配置生成完整的项目结构和文件。支持 React、Vue、Python、Node.js 等多种项目类型。
+- **analyze_project_requirements**: 分析项目需求并推荐最佳的项目类型和技术栈。
+
+## 使用指南
+
+1. **观察**：理解用户的需求和问题
+2. **思考**：分析如何最好地解决问题，判断是否需要使用工具
+3. **行动**：选择合适的工具执行，传入正确的参数
+4. **结果**：根据工具返回的结果给出最终回答
+
+## 工具使用场景
+
+- 当用户询问最新信息、新闻、技术文档时，使用 **web_search** 或 **search_and_summarize**
+- 当用户想要查找开源项目、代码示例时，使用 **github_search_repos** 或 **github_search_code**
+- 当用户想要查看某个 GitHub 仓库的详情时，使用 **github_get_repo**、**github_get_readme** 或 **github_list_dir**
+- 当用户想要下载/克隆 GitHub 仓库时，使用 **clone_github_repo** 工具生成克隆命令
+- 当用户想要创建新项目时，先使用 **analyze_project_requirements** 分析需求，然后使用 **generate_project** 生成项目
 
 始终保持友好、专业的态度，并提供准确、有用的信息。`
 
@@ -62,6 +105,7 @@ const DEFAULT_CONFIG: AgentConfig = {
     'github_list_dir',
     'github_get_readme',
     'github_search_code',
+    'clone_github_repo',
     'generate_project',
     'analyze_project_requirements',
   ],
@@ -219,6 +263,187 @@ export class Agent {
   }
 
   /**
+   * 构建 AI SDK 格式的工具集
+   * 将自定义工具转换为 AI SDK 的 tool 格式
+   */
+  private buildToolSet(): ToolSet {
+    const tools: ToolSet = {}
+
+    // 网络搜索工具
+    if (this.config.enabledTools.includes('web_search')) {
+      tools.web_search = tool({
+        description: webSearchTool.description,
+        inputSchema: z.object({
+          query: z.string().describe('搜索查询语句，应该清晰、具体，包含关键词'),
+          numResults: z.number().optional().describe('返回的搜索结果数量 (1-20，默认 10)'),
+          language: z.string().optional().describe('搜索结果的语言偏好'),
+        }),
+        execute: async (args) => {
+          return await webSearchTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('fetch_webpage')) {
+      tools.fetch_webpage = tool({
+        description: fetchWebPageTool.description,
+        inputSchema: z.object({
+          url: z.string().describe('要获取的网页 URL'),
+          maxLength: z.number().optional().describe('返回内容的最大字符数 (默认 5000)'),
+        }),
+        execute: async (args) => {
+          return await fetchWebPageTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('search_and_summarize')) {
+      tools.search_and_summarize = tool({
+        description: searchAndSummarizeTool.description,
+        inputSchema: z.object({
+          query: z.string().describe('搜索查询'),
+          context: z.string().optional().describe('额外的上下文信息，帮助生成更相关的摘要'),
+        }),
+        execute: async (args) => {
+          return await searchAndSummarizeTool.execute(args)
+        },
+      })
+    }
+
+    // GitHub 工具
+    if (this.config.enabledTools.includes('github_search_repos')) {
+      tools.github_search_repos = tool({
+        description: searchGitHubReposTool.description,
+        inputSchema: z.object({
+          query: z.string().describe('搜索关键词，可以使用 GitHub 搜索语法'),
+          sort: z.enum(['stars', 'forks', 'updated']).optional().describe('排序方式'),
+          order: z.enum(['asc', 'desc']).optional().describe('排序顺序'),
+          perPage: z.number().optional().describe('每页结果数 (1-100)'),
+        }),
+        execute: async (args) => {
+          return await searchGitHubReposTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('github_get_file')) {
+      tools.github_get_file = tool({
+        description: getGitHubFileTool.description,
+        inputSchema: z.object({
+          owner: z.string().describe('仓库所有者用户名'),
+          repo: z.string().describe('仓库名称'),
+          path: z.string().describe('文件或目录路径'),
+          ref: z.string().optional().describe('分支、标签或 commit SHA'),
+        }),
+        execute: async (args) => {
+          return await getGitHubFileTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('github_get_repo')) {
+      tools.github_get_repo = tool({
+        description: getGitHubRepoTool.description,
+        inputSchema: z.object({
+          owner: z.string().describe('仓库所有者用户名'),
+          repo: z.string().describe('仓库名称'),
+        }),
+        execute: async (args) => {
+          return await getGitHubRepoTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('github_list_dir')) {
+      tools.github_list_dir = tool({
+        description: listGitHubDirTool.description,
+        inputSchema: z.object({
+          owner: z.string().describe('仓库所有者用户名'),
+          repo: z.string().describe('仓库名称'),
+          path: z.string().optional().describe('目录路径 (默认为根目录)'),
+          ref: z.string().optional().describe('分支、标签或 commit SHA'),
+        }),
+        execute: async (args) => {
+          return await listGitHubDirTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('github_get_readme')) {
+      tools.github_get_readme = tool({
+        description: getGitHubReadmeTool.description,
+        inputSchema: z.object({
+          owner: z.string().describe('仓库所有者用户名'),
+          repo: z.string().describe('仓库名称'),
+          ref: z.string().optional().describe('分支、标签或 commit SHA'),
+        }),
+        execute: async (args) => {
+          return await getGitHubReadmeTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('github_search_code')) {
+      tools.github_search_code = tool({
+        description: searchGitHubCodeTool.description,
+        inputSchema: z.object({
+          query: z.string().describe('搜索关键词'),
+          language: z.string().optional().describe('编程语言过滤'),
+          perPage: z.number().optional().describe('每页结果数'),
+        }),
+        execute: async (args) => {
+          return await searchGitHubCodeTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('clone_github_repo')) {
+      tools.clone_github_repo = tool({
+        description: cloneGitHubRepoTool.description,
+        inputSchema: z.object({
+          repoUrl: z.string().describe('GitHub 仓库 URL'),
+          localPath: z.string().optional().describe('本地克隆路径（可选，默认为当前目录）'),
+          branch: z.string().optional().describe('分支名（可选）'),
+        }),
+        execute: async (args) => {
+          return await cloneGitHubRepoTool.execute(args)
+        },
+      })
+    }
+
+    // 项目生成器工具
+    if (this.config.enabledTools.includes('generate_project')) {
+      tools.generate_project = tool({
+        description: projectGeneratorTool.description,
+        inputSchema: z.object({
+          name: z.string().describe('项目名称'),
+          type: z.enum(['flutter', 'react', 'vue', 'android', 'python', 'nodejs', 'generic']).describe('项目类型'),
+          description: z.string().describe('项目描述'),
+          features: z.array(z.string()).optional().describe('项目功能特性列表'),
+          outputPath: z.string().optional().describe('项目输出路径'),
+        }),
+        execute: async (args) => {
+          return await projectGeneratorTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('analyze_project_requirements')) {
+      tools.analyze_project_requirements = tool({
+        description: analyzeProjectRequirementsTool.description,
+        inputSchema: z.object({
+          description: z.string().describe('项目需求描述'),
+        }),
+        execute: async (args) => {
+          return await analyzeProjectRequirementsTool.execute(args)
+        },
+      })
+    }
+
+    return tools
+  }
+
+  /**
    * 发送消息并获取响应（非流式）
    */
   async sendMessage(
@@ -226,6 +451,7 @@ export class Agent {
     content: string,
     options: {
       signal?: AbortSignal
+      modelConfig?: { provider: string; modelId: string }
     } = {}
   ): Promise<AgentResponse> {
     const session = this.getOrCreateSession(sessionId)
@@ -251,42 +477,32 @@ export class Agent {
       // 创建模型实例，传入 modelConfig
       const model = await this.createModelInstance(options.modelConfig)
 
-      // 构造消息列表（排除 system 消息，streamText 会自行处理）
+      // 构造消息列表
       const chatMessages = this.convertToMessages(session.messages)
 
-      // 调用 streamText 进行流式生成
-      let fullResult: StreamTextResult = { contentParts: [] }
+      // 构建工具集
+      const tools = this.buildToolSet()
 
-      const { result } = await streamText(model, {
-        messages: chatMessages,
-        onResultChangeWithCancel: (data) => {
-          // 收集完整结果
-          if (data.contentParts) {
-            fullResult = {
-              ...fullResult,
-              ...data,
-              contentParts: data.contentParts,
-            }
-          }
-        },
-      }, options.signal)
-
-      fullResult = result
+      // 调用 model.chat() 进行生成，传入 tools 参数
+      const result = await model.chat(chatMessages, {
+        signal: options.signal,
+        tools,
+      })
 
       // 提取回复文本
-      const responseContent = fullResult.contentParts
+      const responseContent = result.contentParts
         ?.filter((p) => p.type === 'text')
         .map((p) => p.text)
         .join('') || ''
 
       // 提取思考步骤
-      const extractedSteps = this.extractThoughtSteps(fullResult)
+      const extractedSteps = this.extractThoughtSteps(result)
       thoughtSteps.push(...extractedSteps)
 
       // 提取工具调用
       const toolCalls: ToolCall[] = []
-      if (fullResult.contentParts) {
-        for (const part of fullResult.contentParts) {
+      if (result.contentParts) {
+        for (const part of result.contentParts) {
           if (part.type === 'tool-call') {
             toolCalls.push({
               tool: part.toolName,
@@ -410,55 +626,28 @@ export class Agent {
       // 构造消息列表
       const chatMessages = this.convertToMessages(session.messages)
 
+      // 构建工具集
+      const tools = options.enableTools !== false ? this.buildToolSet() : undefined
+
       // 用于收集完整回复
       let fullContent = ''
       const toolCalls: ToolCall[] = []
-      let cancelFn: (() => void) | undefined
 
-      // 调用 streamText 进行流式生成
-      const { result } = await streamText(
-        model,
-        {
-          messages: chatMessages,
-          onResultChangeWithCancel: (data) => {
-            // 保存取消函数
-            if (data.cancel) {
-              cancelFn = data.cancel
+      // 调用 model.chat() 进行流式生成，传入 tools 参数
+      const result = await model.chat(chatMessages, {
+        signal: options.signal,
+        tools,
+        onResultChange: (data) => {
+          // 提取文本增量
+          if (data.contentParts) {
+            const textParts = data.contentParts.filter((p) => p.type === 'text')
+            const newText = textParts.map((p) => p.text).join('')
+            if (newText.length > fullContent.length) {
+              fullContent = newText
             }
-
-            if (data.contentParts) {
-              // 提取文本增量
-              const textParts = data.contentParts.filter((p) => p.type === 'text')
-              const newText = textParts.map((p) => p.text).join('')
-
-              // 只发送新增的文本
-              if (newText.length > fullContent.length) {
-                const delta = newText.substring(fullContent.length)
-                fullContent = newText
-                // 注意：这里不能直接 yield，因为回调不是 generator
-                // 我们会在下面的处理中通过 result 获取完整内容
-              }
-
-              // 提取推理内容
-              const reasoningParts = data.contentParts.filter((p) => p.type === 'reasoning')
-              for (const rp of reasoningParts) {
-                if (rp.text) {
-                  // 推理内容通过 thought 类型发送
-                }
-              }
-
-              // 提取工具调用
-              const toolCallParts = data.contentParts.filter((p) => p.type === 'tool-call')
-              for (const tc of toolCallParts) {
-                if (tc.state === 'call') {
-                  // 新的工具调用
-                }
-              }
-            }
-          },
+          }
         },
-        options.signal
-      )
+      })
 
       // 从最终结果中提取内容并发送
       const finalText = result.contentParts
@@ -626,6 +815,7 @@ export class Agent {
       github_list_dir: 'GitHub 列出目录：列出 GitHub 仓库中的目录内容',
       github_get_readme: 'GitHub 获取 README：获取仓库的 README 文件',
       github_search_code: 'GitHub 搜索代码：在 GitHub 上搜索代码',
+      clone_github_repo: 'GitHub 克隆仓库：克隆 GitHub 仓库到本地指定目录',
       generate_project: '生成项目：根据描述生成项目脚手架',
       analyze_project_requirements: '分析项目需求：分析项目需求并推荐技术方案',
     }

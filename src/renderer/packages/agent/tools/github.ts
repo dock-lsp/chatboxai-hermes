@@ -679,6 +679,223 @@ export const searchGitHubCodeTool: Tool = {
   },
 }
 
+/**
+ * 克隆 GitHub 仓库工具
+ * 生成 git clone 命令并提供克隆指导
+ */
+export const cloneGitHubRepoTool: Tool = {
+  name: 'clone_github_repo',
+  description:
+    '克隆 GitHub 仓库到本地指定目录。会生成 git clone 命令并提供克隆指导。当用户想要下载或使用某个 GitHub 项目时使用此工具。',
+  parameters: [
+    {
+      name: 'repoUrl',
+      type: 'string',
+      description: 'GitHub 仓库 URL，支持 HTTPS 或 SSH 格式',
+      required: true,
+    },
+    {
+      name: 'localPath',
+      type: 'string',
+      description: '本地克隆路径（可选，默认为当前目录，仓库名将作为子目录）',
+      required: false,
+    },
+    {
+      name: 'branch',
+      type: 'string',
+      description: '分支名（可选，默认克隆默认分支）',
+      required: false,
+    },
+    {
+      name: 'depth',
+      type: 'number',
+      description: '克隆深度，用于浅克隆（可选，例如 1 表示只克隆最新提交）',
+      required: false,
+    },
+  ],
+  execute: async (args: {
+    repoUrl: string
+    localPath?: string
+    branch?: string
+    depth?: number
+  }) => {
+    const { repoUrl, localPath, branch, depth } = args
+
+    // 验证 URL 格式
+    const httpsPattern = /^https:\/\/github\.com\/[^/]+\/[^/]+(\/)?$/
+    const sshPattern = /^git@github\.com:[^/]+\/[^/]+(\.git)?$/
+    const shortPattern = /^[^/]+\/[^/]+$/
+
+    let normalizedUrl = repoUrl.trim()
+
+    // 处理 owner/repo 简写格式
+    if (shortPattern.test(normalizedUrl) && !normalizedUrl.startsWith('http') && !normalizedUrl.startsWith('git@')) {
+      normalizedUrl = `https://github.com/${normalizedUrl}`
+    }
+
+    // 验证 URL
+    if (!httpsPattern.test(normalizedUrl) && !sshPattern.test(normalizedUrl)) {
+      return {
+        success: false,
+        error: '无效的 GitHub 仓库 URL。请使用以下格式之一：\n' +
+          '1. https://github.com/owner/repo\n' +
+          '2. git@github.com:owner/repo.git\n' +
+          '3. owner/repo（简写格式）',
+        providedUrl: repoUrl,
+      }
+    }
+
+    // 提取仓库信息
+    let owner = ''
+    let repo = ''
+
+    if (normalizedUrl.startsWith('https://')) {
+      const match = normalizedUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
+      if (match) {
+        owner = match[1]
+        repo = match[2].replace(/\.git$/, '')
+      }
+    } else if (normalizedUrl.startsWith('git@')) {
+      const match = normalizedUrl.match(/github\.com:([^/]+)\/([^/]+)/)
+      if (match) {
+        owner = match[1]
+        repo = match[2].replace(/\.git$/, '')
+      }
+    }
+
+    // 构建 git clone 命令
+    const commandParts = ['git clone']
+
+    // 添加分支参数
+    if (branch) {
+      commandParts.push(`--branch ${branch}`)
+    }
+
+    // 添加深度参数（浅克隆）
+    if (depth && depth > 0) {
+      commandParts.push(`--depth ${depth}`)
+    }
+
+    // 添加仓库 URL
+    commandParts.push(normalizedUrl)
+
+    // 添加本地路径
+    if (localPath) {
+      commandParts.push(localPath)
+    }
+
+    const command = commandParts.join(' ')
+
+    // 构建克隆指导
+    const guidance: string[] = [
+      `## 克隆 GitHub 仓库: ${owner}/${repo}`,
+      '',
+      '### 克隆命令',
+      '```bash',
+      command,
+      '```',
+      '',
+    ]
+
+    // 添加分支信息
+    if (branch) {
+      guidance.push(
+        `### 分支信息`,
+        `- 指定分支: **${branch}**`,
+        ''
+      )
+    }
+
+    // 添加本地路径信息
+    if (localPath) {
+      guidance.push(
+        `### 本地路径`,
+        `- 克隆到: **${localPath}**`,
+        ''
+      )
+    } else {
+      guidance.push(
+        `### 本地路径`,
+        `- 克隆到: **./${repo}/** 目录`,
+        ''
+      )
+    }
+
+    // 添加浅克隆说明
+    if (depth) {
+      guidance.push(
+        `### 克隆模式`,
+        `- 浅克隆: 仅克隆最近 **${depth}** 个提交`,
+        '- 这样可以节省时间和磁盘空间',
+        ''
+      )
+    }
+
+    // 添加后续步骤
+    guidance.push(
+      '### 后续步骤',
+      '```bash',
+      `# 进入项目目录`,
+      localPath ? `cd ${localPath}` : `cd ${repo}`,
+      '',
+      `# 查看远程分支`,
+      `git branch -r`,
+      '',
+      `# 安装依赖（根据项目类型）`,
+      `# npm install    # Node.js 项目`,
+      `# pip install -r requirements.txt  # Python 项目`,
+      `# bundle install # Ruby 项目`,
+      '```',
+      '',
+      '### 注意事项',
+      '1. 确保已安装 Git：\`git --version\`',
+      '2. 对于私有仓库，需要配置 SSH 密钥或使用个人访问令牌',
+      '3. 如果遇到权限问题，请检查 GitHub 认证配置',
+      ''
+    )
+
+    // 添加 SSH 密钥配置提示（如果是 HTTPS URL）
+    if (normalizedUrl.startsWith('https://')) {
+      guidance.push(
+        '### 配置 SSH 密钥（推荐）',
+        '为避免每次推送都需要输入密码，建议配置 SSH 密钥：',
+        '```bash',
+        '# 生成 SSH 密钥',
+        'ssh-keygen -t ed25519 -C "your_email@example.com"',
+        '',
+        '# 添加密钥到 SSH 代理',
+        'eval "$(ssh-agent -s)"',
+        'ssh-add ~/.ssh/id_ed25519',
+        '',
+        '# 复制公钥到 GitHub',
+        'cat ~/.ssh/id_ed25519.pub',
+        '# 然后将输出内容添加到 GitHub Settings -> SSH and GPG keys',
+        '',
+        '# 更新远程 URL 为 SSH 格式',
+        `git remote set-url origin git@github.com:${owner}/${repo}.git`,
+        '```',
+        ''
+      )
+    }
+
+    return {
+      success: true,
+      command,
+      guidance: guidance.join('\n'),
+      repository: {
+        owner,
+        repo,
+        url: normalizedUrl,
+      },
+      options: {
+        branch,
+        localPath,
+        depth,
+      },
+    }
+  },
+}
+
 // 导出所有 GitHub 工具
 export const githubTools = [
   searchGitHubReposTool,
@@ -688,6 +905,7 @@ export const githubTools = [
   getGitHubReadmeTool,
   createGitHubIssueTool,
   searchGitHubCodeTool,
+  cloneGitHubRepoTool,
 ]
 
 // 导出底层 API 函数
