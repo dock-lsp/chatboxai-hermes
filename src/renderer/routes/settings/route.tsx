@@ -9,6 +9,7 @@ import {
   IconChevronRight,
   IconCircleDottedLetterM,
   IconFileText,
+  IconFolderTree,
   IconInfoCircle,
   IconKeyboard,
   IconMessages,
@@ -23,6 +24,7 @@ import Divider from '@/components/common/Divider'
 import Page from '@/components/layout/Page'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { HermesSettingsTab } from '@/components/hermes'
+import { FileTreePanel } from '@/components/file-tree'
 import { useProviders } from '@/hooks/useProviders'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import platform from '@/platform'
@@ -90,6 +92,11 @@ const ITEMS = [
     key: 'hermes',
     label: 'Hermes AI',
     icon: <IconBrain className="w-full h-full" />,
+  },
+  {
+    key: 'file-tree',
+    label: 'File Manager',
+    icon: <IconFolderTree className="w-full h-full" />,
   },
   {
     key: 'general',
@@ -232,7 +239,7 @@ export function SettingsRoot() {
       )}
       {!(isSmallScreen && routerState.location.pathname === '/settings') && (
         <Box flex="1 1 80%" className="overflow-auto">
-          {key === 'hermes' ? <HermesSettingsTab /> : <Outlet />}
+          {key === 'hermes' ? <HermesSettingsTab /> : key === 'file-tree' ? <FileTreePanel /> : <Outlet />}
         </Box>
       )}
     </Flex>
