@@ -14,6 +14,7 @@ import type { Message, SessionSettings, Settings, StreamTextResult } from '@shar
 import { createModelDependencies } from '@/adapters'
 import { settingsStore } from '@/stores/settingsStore'
 import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
+import { convertToModelMessages } from '@/packages/model-calls/message-utils'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import type {
@@ -689,14 +690,15 @@ export class Agent {
       // 创建模型实例，传入 modelConfig
       const model = await this.createModelInstance(options.modelConfig)
 
-      // 构造消息列表
+      // 构造消息列表（转换为 ModelMessage 格式）
       const chatMessages = this.convertToMessages(session.messages)
+      const coreMessages = await convertToModelMessages(chatMessages, { modelSupportVision: model.isSupportVision() })
 
       // 构建工具集
       const tools = this.buildToolSet()
 
       // 调用 model.chat() 进行生成，传入 tools 参数
-      const result = await model.chat(chatMessages, {
+      const result = await model.chat(coreMessages, {
         signal: options.signal,
         tools,
       })
@@ -835,8 +837,9 @@ export class Agent {
         thoughtStep: analyzingStep,
       }
 
-      // 构造消息列表
+      // 构造消息列表（转换为 ModelMessage 格式）
       const chatMessages = this.convertToMessages(session.messages)
+      const coreMessages = await convertToModelMessages(chatMessages, { modelSupportVision: model.isSupportVision() })
 
       // 构建工具集
       const tools = options.enableTools !== false ? this.buildToolSet() : undefined
@@ -846,7 +849,7 @@ export class Agent {
       const toolCalls: ToolCall[] = []
 
       // 调用 model.chat() 进行流式生成，传入 tools 参数
-      const result = await model.chat(chatMessages, {
+      const result = await model.chat(coreMessages, {
         signal: options.signal,
         tools,
         onResultChange: (data) => {
