@@ -3,11 +3,19 @@ import { executeGitClone, checkGitInstalled, getDefaultCloneDir, ensureDir } fro
 
 const GITHUB_API_BASE = 'https://api.github.com'
 
-/**
- * 获取 GitHub API Token
- */
-function getGitHubToken(): string {
-  return process.env.GITHUB_TOKEN || ''
+// GitHub Token 存储（内存中）
+let githubToken = ''
+
+export function setGitHubToken(token: string): void {
+  githubToken = token
+}
+
+export function getGitHubToken(): string {
+  return githubToken
+}
+
+export function hasGitHubToken(): boolean {
+  return githubToken.length > 0
 }
 
 /**
@@ -757,20 +765,6 @@ export const cloneGitHubRepoTool: Tool = {
 }
 
 // ==================== GitHub Token 管理工具 ====================
-
-let githubToken = ''
-
-export function setGitHubToken(token: string): void {
-  githubToken = token
-}
-
-export function getGitHubToken(): string {
-  return githubToken
-}
-
-export function hasGitHubToken(): boolean {
-  return githubToken.length > 0
-}
 
 export const setGitHubTokenTool: Tool = {
   name: 'github_set_token',
