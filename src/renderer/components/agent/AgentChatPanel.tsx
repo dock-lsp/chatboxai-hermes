@@ -127,7 +127,7 @@ function MessageBubble({ message, isLast }: MessageBubbleProps) {
             </Text>
           ) : (
             <Box style={{ fontSize: '14px' }}>
-              <Markdown message={{ contentParts: [{ type: 'text', text: message.content }] } as any} />
+              <Markdown>{message.content || ''}</Markdown>
             </Box>
           )}
 
@@ -354,7 +354,7 @@ function StreamingMessage({ content, reasoning, toolCalls }: StreamingMessagePro
           {/* 流式文本内容 */}
           {content && (
             <Box style={{ fontSize: '14px' }}>
-              <Markdown message={{ contentParts: [{ type: 'text', text: content }] } as any} />
+              <Markdown>{content || ''}</Markdown>
             </Box>
           )}
 

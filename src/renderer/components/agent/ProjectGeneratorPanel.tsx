@@ -775,7 +775,7 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
           <ScrollArea h={200}>
             <Paper p="sm" bg="gray.0" radius="sm">
               <Box style={{ fontSize: '13px' }}>
-                <Markdown message={{ contentParts: [{ type: 'text', text: streamingText }] } as any} />
+                <Markdown>{streamingText || ''}</Markdown>
               </Box>
             </Paper>
           </ScrollArea>

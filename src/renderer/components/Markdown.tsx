@@ -100,7 +100,7 @@ function Markdown(props: {
     forceColorScheme,
   } = props
 
-  const codeFences = useMemo(() => (children.match(/```/g) || []).length, [children])
+  const codeFences = useMemo(() => ((children || '').match(/```/g) || []).length, [children])
   const generatingCodeIndex = useMemo(() => (codeFences % 2 === 0 ? -1 : Math.floor(codeFences / 2)), [codeFences])
 
   return (
