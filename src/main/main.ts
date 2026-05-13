@@ -754,3 +754,82 @@ ipcMain.handle('window:close', () => {
 ipcMain.handle('window:is-maximized', () => {
   return mainWindow?.isMaximized()
 })
+
+// --------- 文件树扫描 IPC ---------
+
+import fs from 'fs/promises'
+import { stat, readdir, mkdir, writeFile } from 'fs/promises'
+import { join } from 'path'
+
+/** 读取目录内容 */
+ipcMain.handle('file-tree:read-directory', async (_event, dirPath: string) => {
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    const results = await Promise.all(
+      entries.map(async (entry) => {
+        const fullPath = join(dirPath, entry.name)
+        const stats = await stat(fullPath)
+        return {
+          name: entry.name,
+          isDirectory: entry.isDirectory(),
+          size: stats.size,
+          modifiedAt: stats.mtime.getTime(),
+        }
+      })
+    )
+    return results
+  } catch (error) {
+    log.error('[FileTree] Failed to read directory:', error)
+    throw error
+  }
+})
+
+/** 获取文件信息 */
+ipcMain.handle('file-tree:get-file-info', async (_event, filePath: string) => {
+  try {
+    const stats = await stat(filePath)
+    return {
+      size: stats.size,
+      modifiedAt: stats.mtime.getTime(),
+      isDirectory: stats.isDirectory(),
+    }
+  } catch (error) {
+    log.error('[FileTree] Failed to get file info:', error)
+    throw error
+  }
+})
+
+/** 检查路径是否存在 */
+ipcMain.handle('file-tree:path-exists', async (_event, filePath: string) => {
+  try {
+    await stat(filePath)
+    return true
+  } catch {
+    return false
+  }
+})
+
+/** 写入文件 */
+ipcMain.handle('file:write', async (_event, filePath: string, content: string) => {
+  try {
+    // 确保父目录存在
+    const parentDir = join(filePath, '..')
+    await mkdir(parentDir, { recursive: true })
+    await writeFile(filePath, content, 'utf-8')
+    return { success: true }
+  } catch (error) {
+    log.error('[File] Failed to write file:', error)
+    throw error
+  }
+})
+
+/** 创建目录 */
+ipcMain.handle('file:create-directory', async (_event, dirPath: string) => {
+  try {
+    await mkdir(dirPath, { recursive: true })
+    return { success: true }
+  } catch (error) {
+    log.error('[File] Failed to create directory:', error)
+    throw error
+  }
+})

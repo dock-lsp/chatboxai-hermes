@@ -1,13 +1,16 @@
 /**
  * HermesSettingsTab - Hermes 设置标签页
  * 设置页面中的标签页，管理记忆系统、技能系统和子代理系统的开关与参数
+ * 支持内嵌显示 MemoryPanel 和 SkillsPanel
  */
 
-import { Button, Group, NumberInput, Slider, Stack, Switch, Text, Title } from '@mantine/core'
-import { IconBrain, IconListDetails, IconRobot } from '@tabler/icons-react'
+import { Button, Card, Collapse, Group, NumberInput, Slider, Stack, Switch, Text, Title } from '@mantine/core'
+import { IconBrain, IconChevronDown, IconChevronRight, IconListDetails, IconRobot } from '@tabler/icons-react'
 import { createStore } from 'zustand'
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import MemoryPanel from './MemoryPanel'
+import SkillsPanel from './SkillsPanel'
 
 /** Hermes 设置状态接口 */
 export interface HermesSettingsState {
@@ -62,12 +65,16 @@ export const useHermesSettingsStore = createStore<HermesSettingsStore>()((set) =
 
 /** Hermes 设置标签页组件 */
 const HermesSettingsTab = memo<{
-  /** 点击"查看记忆"按钮的回调 */
+  /** 点击"查看记忆"按钮的回调（已弃用，保留以兼容旧代码） */
   onViewMemories?: () => void
-  /** 点击"查看技能"按钮的回调 */
+  /** 点击"查看技能"按钮的回调（已弃用，保留以兼容旧代码） */
   onViewSkills?: () => void
 }>(({ onViewMemories, onViewSkills }) => {
   const { t } = useTranslation()
+
+  // 内嵌面板显示状态
+  const [memoryPanelOpen, setMemoryPanelOpen] = useState(false)
+  const [skillsPanelOpen, setSkillsPanelOpen] = useState(false)
 
   // 从 store 获取设置状态和操作方法
   const memoryEnabled = useHermesSettingsStore((s) => s.memoryEnabled)
@@ -81,14 +88,26 @@ const HermesSettingsTab = memo<{
   const setSubagentMaxConcurrent = useHermesSettingsStore((s) => s.setSubagentMaxConcurrent)
   const setSubagentTimeout = useHermesSettingsStore((s) => s.setSubagentTimeout)
 
-  /** 处理查看记忆 */
+  /** 处理查看记忆 - 切换内嵌面板显示 */
   const handleViewMemories = useCallback(() => {
-    onViewMemories?.()
+    // 如果提供了回调，优先使用回调（兼容旧代码）
+    if (onViewMemories) {
+      onViewMemories()
+    } else {
+      // 否则切换内嵌面板
+      setMemoryPanelOpen((prev) => !prev)
+    }
   }, [onViewMemories])
 
-  /** 处理查看技能 */
+  /** 处理查看技能 - 切换内嵌面板显示 */
   const handleViewSkills = useCallback(() => {
-    onViewSkills?.()
+    // 如果提供了回调，优先使用回调（兼容旧代码）
+    if (onViewSkills) {
+      onViewSkills()
+    } else {
+      // 否则切换内嵌面板
+      setSkillsPanelOpen((prev) => !prev)
+    }
   }, [onViewSkills])
 
   return (
@@ -114,10 +133,28 @@ const HermesSettingsTab = memo<{
           variant="outline"
           size="xs"
           leftSection={<IconBrain size={14} />}
+          rightSection={
+            !onViewMemories ? (
+              memoryPanelOpen ? (
+                <IconChevronDown size={14} />
+              ) : (
+                <IconChevronRight size={14} />
+              )
+            ) : null
+          }
           onClick={handleViewMemories}
         >
-          {t('View Memories')}
+          {memoryPanelOpen && !onViewMemories ? t('Hide Memories') : t('View Memories')}
         </Button>
+
+        {/* 内嵌记忆面板 */}
+        {!onViewMemories && (
+          <Collapse in={memoryPanelOpen}>
+            <Card withBorder radius="md" p={0} bg="gray.0">
+              <MemoryPanel />
+            </Card>
+          </Collapse>
+        )}
       </Stack>
 
       {/* 技能系统设置 */}
@@ -139,10 +176,28 @@ const HermesSettingsTab = memo<{
           variant="outline"
           size="xs"
           leftSection={<IconListDetails size={14} />}
+          rightSection={
+            !onViewSkills ? (
+              skillsPanelOpen ? (
+                <IconChevronDown size={14} />
+              ) : (
+                <IconChevronRight size={14} />
+              )
+            ) : null
+          }
           onClick={handleViewSkills}
         >
-          {t('View Skills')}
+          {skillsPanelOpen && !onViewSkills ? t('Hide Skills') : t('View Skills')}
         </Button>
+
+        {/* 内嵌技能面板 */}
+        {!onViewSkills && (
+          <Collapse in={skillsPanelOpen}>
+            <Card withBorder radius="md" p={0} bg="gray.0">
+              <SkillsPanel />
+            </Card>
+          </Collapse>
+        )}
       </Stack>
 
       {/* 子代理系统设置 */}

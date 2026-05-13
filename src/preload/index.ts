@@ -58,6 +58,16 @@ const electronHandler: ElectronIPC = {
     ipcRenderer.on('navigate-to', listener)
     return () => ipcRenderer.off('navigate-to', listener)
   },
+  /** 文件树扫描 - 读取目录 */
+  readDirectory: (path: string) => ipcRenderer.invoke('file-tree:read-directory', path),
+  /** 文件树扫描 - 获取文件信息 */
+  getFileInfo: (path: string) => ipcRenderer.invoke('file-tree:get-file-info', path),
+  /** 文件树扫描 - 检查路径是否存在 */
+  pathExists: (path: string) => ipcRenderer.invoke('file-tree:path-exists', path),
+  /** 文件操作 - 写入文件 */
+  writeFile: (path: string, content: string) => ipcRenderer.invoke('file:write', path, content),
+  /** 文件操作 - 创建目录 */
+  createDirectory: (path: string) => ipcRenderer.invoke('file:create-directory', path),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronHandler)

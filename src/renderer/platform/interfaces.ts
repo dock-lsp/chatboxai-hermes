@@ -100,6 +100,15 @@ export interface Platform extends Storage {
   isMaximized(): Promise<boolean>
 
   onMaximizedChange(callback: (isMaximized: boolean) => void): () => void
+
+  // 文件树扫描
+  readDirectory(path: string): Promise<{ name: string; isDirectory: boolean; size: number; modifiedAt: number }[]>
+  getFileInfo(path: string): Promise<{ size: number; modifiedAt: number; isDirectory: boolean }>
+  pathExists(path: string): Promise<boolean>
+
+  // 文件操作
+  writeFile(path: string, content: string): Promise<void>
+  createDirectory(path: string): Promise<void>
 }
 
 export interface Exporter {

@@ -307,4 +307,26 @@ export default class DesktopPlatform implements Platform {
 
     return unsubscribe
   }
+
+  // 文件树扫描
+  public readDirectory(path: string) {
+    return this.ipc.readDirectory(path)
+  }
+
+  public getFileInfo(path: string) {
+    return this.ipc.getFileInfo(path)
+  }
+
+  public pathExists(path: string) {
+    return this.ipc.pathExists(path)
+  }
+
+  // 文件操作
+  public writeFile(path: string, content: string) {
+    return this.ipc.writeFile(path, content)
+  }
+
+  public createDirectory(path: string) {
+    return this.ipc.createDirectory(path)
+  }
 }
