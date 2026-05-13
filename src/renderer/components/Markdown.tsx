@@ -104,6 +104,7 @@ function Markdown(props: {
   const generatingCodeIndex = useMemo(() => (codeFences % 2 === 0 ? -1 : Math.floor(codeFences / 2)), [codeFences])
 
   return (
+    <BlockCodeCollapsedStateProvider>
     <ReactMarkdown
       remarkPlugins={
         enableLaTeXRendering
@@ -147,6 +148,7 @@ function Markdown(props: {
     >
       {enableLaTeXRendering ? latex.processLaTeX(children) : children}
     </ReactMarkdown>
+    </BlockCodeCollapsedStateProvider>
   )
 }
 

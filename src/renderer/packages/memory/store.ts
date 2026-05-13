@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
-import { createStore, useStore } from 'zustand'
+import { create } from 'zustand'
+import { useStore } from 'zustand/react'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { getLogger } from '@/lib/utils'
@@ -57,7 +58,7 @@ function computeRelevanceScore(memory: Memory, query: string): number {
   return score
 }
 
-export const memoryStore = createStore<MemoryState>()(
+export const memoryStore = create<MemoryState>(
   persist(
     immer((set, get) => ({
       memories: [],

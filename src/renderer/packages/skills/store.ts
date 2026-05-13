@@ -4,7 +4,7 @@
  */
 
 import type { Skill, SkillMatchResult, SkillStore } from './types'
-import { createStore } from 'zustand'
+import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { getLogger } from '@/lib/utils'
@@ -70,7 +70,7 @@ function calculateMatchScore(input: string, triggerConditions: string[]): { scor
   return { score, matched }
 }
 
-export const skillsStore = createStore<SkillsStore>()(
+export const skillsStore = create<SkillsStore>(
   persist(
     immer((set, get) => ({
       skills: [],
