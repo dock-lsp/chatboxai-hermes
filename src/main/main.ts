@@ -15,6 +15,8 @@ import log from 'electron-log/main'
 import { autoUpdater } from 'electron-updater'
 import os from 'os'
 import path from 'path'
+import { spawn } from 'child_process'
+import { mkdir, writeFile } from 'fs/promises'
 // @ts-expect-error - source-map-support doesn't have type definitions
 import * as sourceMapSupport from 'source-map-support'
 import type { ShortcutSetting } from 'src/shared/types'
@@ -832,4 +834,57 @@ ipcMain.handle('file:create-directory', async (_event, dirPath: string) => {
     log.error('[File] Failed to create directory:', error)
     throw error
   }
+})
+
+/** 执行 Git Clone */
+ipcMain.handle('git:clone', async (_event, options: { repoUrl: string; targetDir?: string; branch?: string; depth?: number }) => {
+  return new Promise((resolve) => {
+    const args: string[] = ['clone']
+    if (options.branch) {
+      args.push('-b', options.branch)
+    }
+    if (options.depth && options.depth > 0) {
+      args.push('--depth', String(options.depth))
+    }
+    args.push(options.repoUrl)
+    if (options.targetDir) {
+      args.push(options.targetDir)
+    }
+
+    const gitProcess = spawn('git', args, { shell: true })
+    let output = ''
+    let errorOutput = ''
+
+    gitProcess.stdout?.on('data', (data) => {
+      output += data.toString()
+    })
+
+    gitProcess.stderr?.on('data', (data) => {
+      const chunk = data.toString()
+      output += chunk
+      errorOutput += chunk
+    })
+
+    gitProcess.on('close', (code) => {
+      if (code === 0) {
+        resolve({ success: true, output: output || '克隆完成' })
+      } else {
+        resolve({ success: false, output, error: errorOutput || `克隆失败，退出码: ${code}` })
+      }
+    })
+
+    gitProcess.on('error', (err) => {
+      resolve({ success: false, output, error: err.message })
+    })
+  })
+})
+
+/** 检查 Git 是否安装 */
+ipcMain.handle('git:check', async () => {
+  return new Promise((resolve) => {
+    const process = spawn('git', ['--version'], { shell: true })
+    process.on('close', (code) => resolve(code === 0))
+    process.on('error', () => resolve(false))
+    setTimeout(() => resolve(false), 5000)
+  })
 })
