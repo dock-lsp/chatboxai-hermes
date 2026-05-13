@@ -128,7 +128,7 @@ jobs:
   # ====== 发布桌面端 Release ======
   release-desktop:
     needs: [build-win-linux, build-macos]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
