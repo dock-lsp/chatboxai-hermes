@@ -34,6 +34,13 @@ import {
   getGitHubReadmeTool,
   searchGitHubCodeTool,
   cloneGitHubRepoTool,
+  // 新增 GitHub 工具
+  setGitHubTokenTool,
+  getGitHubTokenStatusTool,
+  createGitHubRepoTool,
+  pushToGitHubTool,
+  pushMultipleFilesTool,
+  generateGitCommandsTool,
 } from './tools/github'
 import {
   projectGeneratorTool,
@@ -44,6 +51,14 @@ import {
   fetchWebPageTool,
   searchAndSummarizeTool,
 } from './tools/web-search'
+// CI/CD Builder 工具
+import {
+  generateGitHubActionsTool,
+  generateDockerfileTool,
+  generateDockerComposeTool,
+  generateDockerignoreTool,
+  generateGitignoreTool,
+} from './tools/cicd-builder'
 
 /**
  * 默认智能体系统提示
@@ -58,17 +73,30 @@ const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户
 - **search_and_summarize**: 搜索网络并返回摘要信息。适合快速获取某个主题的概览信息。
 
 ### GitHub 工具
+- **github_set_token**: 设置 GitHub Personal Access Token，用于需要认证的操作。
+- **github_token_status**: 检查 GitHub Token 是否已配置。
 - **github_search_repos**: 在 GitHub 上搜索仓库。用于查找开源项目、库或示例代码。
 - **github_get_repo**: 获取 GitHub 仓库的详细信息，包括星标数、语言、描述等。
 - **github_get_file**: 获取 GitHub 仓库中特定文件或目录的内容。
 - **github_list_dir**: 列出 GitHub 仓库中某个目录的内容。
 - **github_get_readme**: 获取 GitHub 仓库的 README 文件内容。
 - **github_search_code**: 在 GitHub 上搜索代码。可以搜索特定的代码片段、函数名等。
+- **github_create_repo**: 在 GitHub 上创建新仓库。需要先设置 GitHub Token。
+- **github_push_files**: 推送文件到 GitHub 仓库（创建或更新文件）。
+- **github_push_multiple_files**: 批量推送多个文件到 GitHub 仓库。
+- **github_generate_commands**: 生成 Git 操作命令（init、add、commit、push 等）。
 - **clone_github_repo**: 克隆 GitHub 仓库到本地指定目录。当用户想要下载或使用某个 GitHub 项目时使用。
 
 ### 项目生成器工具
 - **generate_project**: 根据配置生成完整的项目结构和文件。支持 React、Vue、Python、Node.js 等多种项目类型。
 - **analyze_project_requirements**: 分析项目需求并推荐最佳的项目类型和技术栈。
+
+### CI/CD Builder 工具
+- **cicd_github_actions**: 生成 GitHub Actions 工作流配置。支持 Node.js、Python、Flutter、React、Vue 等项目类型。
+- **cicd_dockerfile**: 生成 Dockerfile 配置。支持 Node.js、Python、Nginx 和多阶段构建。
+- **cicd_docker_compose**: 生成 docker-compose.yml 配置。支持自定义服务、Redis、PostgreSQL、Nginx 等。
+- **cicd_dockerignore**: 生成 .dockerignore 文件，优化 Docker 构建上下文。
+- **cicd_gitignore**: 生成 .gitignore 文件。
 
 ## 使用指南
 
@@ -84,6 +112,8 @@ const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户
 - 当用户想要查看某个 GitHub 仓库的详情时，使用 **github_get_repo**、**github_get_readme** 或 **github_list_dir**
 - 当用户想要下载/克隆 GitHub 仓库时，使用 **clone_github_repo** 工具生成克隆命令
 - 当用户想要创建新项目时，先使用 **analyze_project_requirements** 分析需求，然后使用 **generate_project** 生成项目
+- 当用户需要创建 GitHub 仓库或推送代码时，先使用 **github_set_token** 设置 Token，然后使用 **github_create_repo** 或 **github_push_files**
+- 当用户需要生成 CI/CD 配置时，使用 **cicd_github_actions**、**cicd_dockerfile** 或 **cicd_docker_compose**
 
 始终保持友好、专业的态度，并提供准确、有用的信息。`
 
@@ -99,15 +129,29 @@ const DEFAULT_CONFIG: AgentConfig = {
     'web_search',
     'fetch_webpage',
     'search_and_summarize',
+    // GitHub 工具
+    'github_set_token',
+    'github_token_status',
     'github_search_repos',
     'github_get_file',
     'github_get_repo',
     'github_list_dir',
     'github_get_readme',
     'github_search_code',
+    'github_create_repo',
+    'github_push_files',
+    'github_push_multiple_files',
+    'github_generate_commands',
     'clone_github_repo',
+    // 项目生成器工具
     'generate_project',
     'analyze_project_requirements',
+    // CI/CD Builder 工具
+    'cicd_github_actions',
+    'cicd_dockerfile',
+    'cicd_docker_compose',
+    'cicd_dockerignore',
+    'cicd_gitignore',
   ],
 }
 
@@ -411,6 +455,100 @@ export class Agent {
       })
     }
 
+    // GitHub Token 管理工具
+    if (this.config.enabledTools.includes('github_set_token')) {
+      tools.github_set_token = tool({
+        description: setGitHubTokenTool.description,
+        inputSchema: z.object({
+          token: z.string().describe('GitHub Personal Access Token（需要 repo 权限）'),
+        }),
+        execute: async (args) => {
+          return await setGitHubTokenTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('github_token_status')) {
+      tools.github_token_status = tool({
+        description: getGitHubTokenStatusTool.description,
+        inputSchema: z.object({}),
+        execute: async () => {
+          return await getGitHubTokenStatusTool.execute({})
+        },
+      })
+    }
+
+    // 创建仓库工具
+    if (this.config.enabledTools.includes('github_create_repo')) {
+      tools.github_create_repo = tool({
+        description: createGitHubRepoTool.description,
+        inputSchema: z.object({
+          name: z.string().describe('仓库名称'),
+          description: z.string().optional().describe('仓库描述'),
+          private: z.boolean().optional().describe('是否私有仓库'),
+          autoInit: z.boolean().optional().describe('是否自动初始化 README'),
+        }),
+        execute: async (args) => {
+          return await createGitHubRepoTool.execute(args)
+        },
+      })
+    }
+
+    // 推送文件工具
+    if (this.config.enabledTools.includes('github_push_files')) {
+      tools.github_push_files = tool({
+        description: pushToGitHubTool.description,
+        inputSchema: z.object({
+          owner: z.string().describe('仓库所有者（用户名）'),
+          repo: z.string().describe('仓库名'),
+          path: z.string().describe('文件路径'),
+          content: z.string().describe('文件内容'),
+          message: z.string().describe('提交消息'),
+          branch: z.string().optional().describe('分支名（默认 main）'),
+        }),
+        execute: async (args) => {
+          return await pushToGitHubTool.execute(args)
+        },
+      })
+    }
+
+    // 批量推送文件工具
+    if (this.config.enabledTools.includes('github_push_multiple_files')) {
+      tools.github_push_multiple_files = tool({
+        description: pushMultipleFilesTool.description,
+        inputSchema: z.object({
+          owner: z.string().describe('仓库所有者（用户名）'),
+          repo: z.string().describe('仓库名'),
+          files: z.array(z.object({
+            path: z.string(),
+            content: z.string(),
+          })).describe('文件列表'),
+          message: z.string().describe('提交消息'),
+          branch: z.string().optional().describe('分支名'),
+        }),
+        execute: async (args) => {
+          return await pushMultipleFilesTool.execute(args)
+        },
+      })
+    }
+
+    // Git 命令生成器工具
+    if (this.config.enabledTools.includes('github_generate_commands')) {
+      tools.github_generate_commands = tool({
+        description: generateGitCommandsTool.description,
+        inputSchema: z.object({
+          operation: z.enum(['init', 'add', 'commit', 'push', 'pull', 'branch', 'merge']).describe('操作类型'),
+          repoUrl: z.string().optional().describe('仓库 URL'),
+          branch: z.string().optional().describe('分支名'),
+          message: z.string().optional().describe('提交消息'),
+          files: z.string().optional().describe('文件路径（逗号分隔）'),
+        }),
+        execute: async (args) => {
+          return await generateGitCommandsTool.execute(args)
+        },
+      })
+    }
+
     // 项目生成器工具
     if (this.config.enabledTools.includes('generate_project')) {
       tools.generate_project = tool({
@@ -436,6 +574,80 @@ export class Agent {
         }),
         execute: async (args) => {
           return await analyzeProjectRequirementsTool.execute(args)
+        },
+      })
+    }
+
+    // CI/CD Builder 工具
+    if (this.config.enabledTools.includes('cicd_github_actions')) {
+      tools.cicd_github_actions = tool({
+        description: generateGitHubActionsTool.description,
+        inputSchema: z.object({
+          name: z.string().describe('工作流名称'),
+          type: z.enum(['nodejs', 'python', 'flutter', 'react', 'vue', 'generic']).describe('项目类型'),
+          nodeVersion: z.string().optional().describe('Node.js 版本'),
+          pythonVersion: z.string().optional().describe('Python 版本'),
+          includeTest: z.boolean().optional().describe('是否包含测试步骤'),
+          includeDeploy: z.boolean().optional().describe('是否包含部署步骤'),
+        }),
+        execute: async (args) => {
+          return await generateGitHubActionsTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('cicd_dockerfile')) {
+      tools.cicd_dockerfile = tool({
+        description: generateDockerfileTool.description,
+        inputSchema: z.object({
+          type: z.enum(['nodejs', 'python', 'nginx', 'multi-stage']).describe('类型'),
+          port: z.number().optional().describe('暴露端口'),
+          buildCommand: z.string().optional().describe('构建命令'),
+          startCommand: z.string().optional().describe('启动命令'),
+        }),
+        execute: async (args) => {
+          return await generateDockerfileTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('cicd_docker_compose')) {
+      tools.cicd_docker_compose = tool({
+        description: generateDockerComposeTool.description,
+        inputSchema: z.object({
+          services: z.array(z.object({
+            name: z.string(),
+            image: z.string().optional(),
+            port: z.number().optional(),
+          })).describe('服务列表'),
+          includeRedis: z.boolean().optional().describe('是否包含 Redis'),
+          includePostgres: z.boolean().optional().describe('是否包含 PostgreSQL'),
+          includeNginx: z.boolean().optional().describe('是否包含 Nginx'),
+        }),
+        execute: async (args) => {
+          return await generateDockerComposeTool.execute(args)
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('cicd_dockerignore')) {
+      tools.cicd_dockerignore = tool({
+        description: generateDockerignoreTool.description,
+        inputSchema: z.object({}),
+        execute: async () => {
+          return await generateDockerignoreTool.execute({})
+        },
+      })
+    }
+
+    if (this.config.enabledTools.includes('cicd_gitignore')) {
+      tools.cicd_gitignore = tool({
+        description: generateGitignoreTool.description,
+        inputSchema: z.object({
+          type: z.enum(['nodejs', 'python', 'flutter', 'react', 'vue', 'generic']).optional().describe('项目类型'),
+        }),
+        execute: async (args) => {
+          return await generateGitignoreTool.execute(args)
         },
       })
     }
@@ -809,15 +1021,29 @@ export class Agent {
       web_search: '网络搜索：搜索互联网获取最新信息',
       fetch_webpage: '获取网页：获取特定网页的内容',
       search_and_summarize: '搜索并总结：搜索信息并生成摘要',
+      // GitHub 工具
+      github_set_token: 'GitHub 设置 Token：设置 GitHub Personal Access Token',
+      github_token_status: 'GitHub Token 状态：检查 GitHub Token 是否已配置',
       github_search_repos: 'GitHub 搜索仓库：搜索 GitHub 上的开源仓库',
       github_get_file: 'GitHub 获取文件：获取 GitHub 仓库中的文件内容',
       github_get_repo: 'GitHub 获取仓库：获取 GitHub 仓库的详细信息',
       github_list_dir: 'GitHub 列出目录：列出 GitHub 仓库中的目录内容',
       github_get_readme: 'GitHub 获取 README：获取仓库的 README 文件',
       github_search_code: 'GitHub 搜索代码：在 GitHub 上搜索代码',
+      github_create_repo: 'GitHub 创建仓库：在 GitHub 上创建新仓库',
+      github_push_files: 'GitHub 推送文件：推送文件到 GitHub 仓库',
+      github_push_multiple_files: 'GitHub 批量推送：批量推送多个文件到 GitHub 仓库',
+      github_generate_commands: 'Git 命令生成：生成 Git 操作命令',
       clone_github_repo: 'GitHub 克隆仓库：克隆 GitHub 仓库到本地指定目录',
+      // 项目生成器工具
       generate_project: '生成项目：根据描述生成项目脚手架',
       analyze_project_requirements: '分析项目需求：分析项目需求并推荐技术方案',
+      // CI/CD Builder 工具
+      cicd_github_actions: '生成 GitHub Actions：生成 GitHub Actions 工作流配置',
+      cicd_dockerfile: '生成 Dockerfile：生成 Dockerfile 配置',
+      cicd_docker_compose: '生成 Docker Compose：生成 docker-compose.yml 配置',
+      cicd_dockerignore: '生成 .dockerignore：生成 .dockerignore 文件',
+      cicd_gitignore: '生成 .gitignore：生成 .gitignore 文件',
     }
     return descriptions[toolName] || toolName
   }

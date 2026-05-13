@@ -2,11 +2,34 @@ import type { Tool, GitHubRepo, GitHubFile } from '../types'
 
 const GITHUB_API_BASE = 'https://api.github.com'
 
+// ==================== GitHub Token 管理 ====================
+
 /**
- * 获取 GitHub API Token
+ * GitHub Token（内存中存储，不持久化）
  */
-function getGitHubToken(): string {
-  return process.env.GITHUB_TOKEN || ''
+let githubToken: string = ''
+
+/**
+ * 设置 GitHub Token
+ * @param token - GitHub Personal Access Token
+ */
+export function setGitHubToken(token: string): void {
+  githubToken = token
+}
+
+/**
+ * 获取 GitHub Token
+ * 优先使用内存中的 Token，其次使用环境变量
+ */
+export function getGitHubToken(): string {
+  return githubToken || process.env.GITHUB_TOKEN || ''
+}
+
+/**
+ * 检查是否已配置 GitHub Token
+ */
+export function hasGitHubToken(): boolean {
+  return !!getGitHubToken()
 }
 
 /**
@@ -896,6 +919,619 @@ export const cloneGitHubRepoTool: Tool = {
   },
 }
 
+// ==================== GitHub Token 管理工具 ====================
+
+/**
+ * 设置 GitHub Token 工具
+ */
+export const setGitHubTokenTool: Tool = {
+  name: 'github_set_token',
+  description: '设置 GitHub Personal Access Token，用于需要认证的操作（如创建仓库、推送文件等）。Token 仅存储在内存中，不会持久化。',
+  parameters: [
+    {
+      name: 'token',
+      type: 'string',
+      description: 'GitHub Personal Access Token（需要 repo 权限）',
+      required: true,
+    },
+  ],
+  execute: async (args: { token: string }) => {
+    if (!args.token || args.token.trim() === '') {
+      return {
+        success: false,
+        error: 'Token 不能为空',
+      }
+    }
+
+    setGitHubToken(args.token.trim())
+
+    return {
+      success: true,
+      message: 'GitHub Token 已设置成功',
+      note: 'Token 仅存储在内存中，应用重启后需要重新设置',
+    }
+  },
+}
+
+/**
+ * 获取 GitHub Token 状态工具
+ */
+export const getGitHubTokenStatusTool: Tool = {
+  name: 'github_token_status',
+  description: '检查 GitHub Token 是否已配置',
+  parameters: [],
+  execute: async () => {
+    const hasToken = hasGitHubToken()
+    return {
+      configured: hasToken,
+      message: hasToken
+        ? 'GitHub Token 已配置'
+        : 'GitHub Token 未配置，请使用 github_set_token 设置',
+    }
+  },
+}
+
+// ==================== 创建仓库工具 ====================
+
+/**
+ * 创建 GitHub 仓库
+ */
+async function createRepository(options: {
+  name: string
+  description?: string
+  private?: boolean
+  autoInit?: boolean
+}): Promise<any> {
+  const token = getGitHubToken()
+  if (!token) {
+    throw new Error('需要 GitHub Token 才能创建仓库。请使用 github_set_token 工具设置 Token。')
+  }
+
+  const response = await fetch(`${GITHUB_API_BASE}/user/repos`, {
+    method: 'POST',
+    headers: {
+      ...buildHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: options.name,
+      description: options.description || '',
+      private: options.private || false,
+      auto_init: options.autoInit || false,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      `创建仓库失败: ${response.status} ${error.message || response.statusText}`
+    )
+  }
+
+  const data = await response.json()
+
+  return {
+    id: data.id,
+    name: data.name,
+    fullName: data.full_name,
+    description: data.description,
+    url: data.html_url,
+    cloneUrl: data.clone_url,
+    sshUrl: data.ssh_url,
+    private: data.private,
+    createdAt: data.created_at,
+  }
+}
+
+/**
+ * 创建 GitHub 仓库工具
+ */
+export const createGitHubRepoTool: Tool = {
+  name: 'github_create_repo',
+  description: '在 GitHub 上创建新仓库。需要先使用 github_set_token 设置 GitHub Token。',
+  parameters: [
+    {
+      name: 'name',
+      type: 'string',
+      description: '仓库名称',
+      required: true,
+    },
+    {
+      name: 'description',
+      type: 'string',
+      description: '仓库描述',
+      required: false,
+    },
+    {
+      name: 'private',
+      type: 'boolean',
+      description: '是否私有仓库（默认 false）',
+      required: false,
+    },
+    {
+      name: 'autoInit',
+      type: 'boolean',
+      description: '是否自动初始化 README（默认 false）',
+      required: false,
+    },
+  ],
+  execute: async (args: {
+    name: string
+    description?: string
+    private?: boolean
+    autoInit?: boolean
+  }) => {
+    try {
+      const repo = await createRepository({
+        name: args.name,
+        description: args.description,
+        private: args.private,
+        autoInit: args.autoInit,
+      })
+
+      return {
+        success: true,
+        repository: repo,
+        message: `仓库 ${repo.fullName} 创建成功`,
+        nextSteps: [
+          `克隆仓库: git clone ${repo.cloneUrl}`,
+          `或使用 SSH: git clone ${repo.sshUrl}`,
+        ],
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '创建仓库失败',
+      }
+    }
+  },
+}
+
+// ==================== 推送文件工具 ====================
+
+/**
+ * 获取文件的 SHA（用于更新已存在的文件）
+ */
+async function getFileSha(
+  owner: string,
+  repo: string,
+  path: string,
+  branch?: string
+): Promise<string | null> {
+  const ref = branch ? `?ref=${encodeURIComponent(branch)}` : ''
+  const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${path}${ref}`
+
+  const response = await fetch(url, {
+    headers: buildHeaders(),
+  })
+
+  if (response.status === 404) {
+    return null
+  }
+
+  if (!response.ok) {
+    return null
+  }
+
+  const data = await response.json()
+  return data.sha
+}
+
+/**
+ * 推送文件到 GitHub 仓库
+ */
+async function pushFile(options: {
+  owner: string
+  repo: string
+  path: string
+  content: string
+  message: string
+  branch?: string
+}): Promise<any> {
+  const token = getGitHubToken()
+  if (!token) {
+    throw new Error('需要 GitHub Token 才能推送文件。请使用 github_set_token 工具设置 Token。')
+  }
+
+  const branch = options.branch || 'main'
+
+  // 检查文件是否已存在
+  const existingSha = await getFileSha(options.owner, options.repo, options.path, branch)
+
+  // Base64 编码内容
+  const contentBase64 = btoa(unescape(encodeURIComponent(options.content)))
+
+  const body: any = {
+    message: options.message,
+    content: contentBase64,
+    branch: branch,
+  }
+
+  // 如果文件已存在，需要提供 SHA 进行更新
+  if (existingSha) {
+    body.sha = existingSha
+  }
+
+  const url = `${GITHUB_API_BASE}/repos/${options.owner}/${options.repo}/contents/${options.path}`
+
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      ...buildHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(
+      `推送文件失败: ${response.status} ${error.message || response.statusText}`
+    )
+  }
+
+  const data = await response.json()
+
+  return {
+    path: data.content.path,
+    sha: data.content.sha,
+    url: data.content.html_url,
+    branch: branch,
+    action: existingSha ? 'updated' : 'created',
+  }
+}
+
+/**
+ * 推送文件到 GitHub 仓库工具
+ */
+export const pushToGitHubTool: Tool = {
+  name: 'github_push_files',
+  description: '推送本地文件到 GitHub 仓库（创建或更新文件）。需要先使用 github_set_token 设置 GitHub Token。',
+  parameters: [
+    {
+      name: 'owner',
+      type: 'string',
+      description: '仓库所有者（用户名）',
+      required: true,
+    },
+    {
+      name: 'repo',
+      type: 'string',
+      description: '仓库名',
+      required: true,
+    },
+    {
+      name: 'path',
+      type: 'string',
+      description: '文件路径（如: src/index.ts）',
+      required: true,
+    },
+    {
+      name: 'content',
+      type: 'string',
+      description: '文件内容',
+      required: true,
+    },
+    {
+      name: 'message',
+      type: 'string',
+      description: '提交消息',
+      required: true,
+    },
+    {
+      name: 'branch',
+      type: 'string',
+      description: '分支名（默认 main）',
+      required: false,
+    },
+  ],
+  execute: async (args: {
+    owner: string
+    repo: string
+    path: string
+    content: string
+    message: string
+    branch?: string
+  }) => {
+    try {
+      const result = await pushFile({
+        owner: args.owner,
+        repo: args.repo,
+        path: args.path,
+        content: args.content,
+        message: args.message,
+        branch: args.branch,
+      })
+
+      return {
+        success: true,
+        ...result,
+        message: `文件 ${args.path} 已${result.action === 'created' ? '创建' : '更新'}`,
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '推送文件失败',
+      }
+    }
+  },
+}
+
+/**
+ * 批量推送多个文件工具
+ */
+export const pushMultipleFilesTool: Tool = {
+  name: 'github_push_multiple_files',
+  description: '批量推送多个文件到 GitHub 仓库。需要先使用 github_set_token 设置 GitHub Token。',
+  parameters: [
+    {
+      name: 'owner',
+      type: 'string',
+      description: '仓库所有者（用户名）',
+      required: true,
+    },
+    {
+      name: 'repo',
+      type: 'string',
+      description: '仓库名',
+      required: true,
+    },
+    {
+      name: 'files',
+      type: 'array',
+      description: '文件列表，格式: [{path: "文件路径", content: "文件内容"}]',
+      required: true,
+    },
+    {
+      name: 'message',
+      type: 'string',
+      description: '提交消息',
+      required: true,
+    },
+    {
+      name: 'branch',
+      type: 'string',
+      description: '分支名（默认 main）',
+      required: false,
+    },
+  ],
+  execute: async (args: {
+    owner: string
+    repo: string
+    files: Array<{ path: string; content: string }>
+    message: string
+    branch?: string
+  }) => {
+    try {
+      const results: Array<{
+        path: string
+        success: boolean
+        action?: string
+        url?: string
+        error?: string
+      }> = []
+
+      for (const file of args.files) {
+        try {
+          const result = await pushFile({
+            owner: args.owner,
+            repo: args.repo,
+            path: file.path,
+            content: file.content,
+            message: args.message,
+            branch: args.branch,
+          })
+
+          results.push({
+            path: file.path,
+            success: true,
+            action: result.action,
+            url: result.url,
+          })
+        } catch (error) {
+          results.push({
+            path: file.path,
+            success: false,
+            error: error instanceof Error ? error.message : '推送失败',
+          })
+        }
+      }
+
+      const successCount = results.filter((r) => r.success).length
+      const failCount = results.filter((r) => !r.success).length
+
+      return {
+        success: failCount === 0,
+        totalFiles: args.files.length,
+        successCount,
+        failCount,
+        results,
+        message: `批量推送完成: ${successCount} 成功, ${failCount} 失败`,
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '批量推送失败',
+      }
+    }
+  },
+}
+
+// ==================== Git 命令生成器工具 ====================
+
+/**
+ * 生成 Git 操作命令
+ */
+function generateGitCommands(options: {
+  operation: string
+  repoUrl?: string
+  branch?: string
+  message?: string
+  files?: string
+}): { commands: string[]; description: string[] } {
+  const commands: string[] = []
+  const description: string[] = []
+
+  switch (options.operation) {
+    case 'init':
+      commands.push('git init')
+      description.push('初始化 Git 仓库')
+      if (options.repoUrl) {
+        commands.push(`git remote add origin ${options.repoUrl}`)
+        description.push('添加远程仓库')
+      }
+      break
+
+    case 'add':
+      if (options.files) {
+        const fileList = options.files.split(',').map((f) => f.trim())
+        commands.push(`git add ${fileList.join(' ')}`)
+      } else {
+        commands.push('git add .')
+      }
+      description.push('添加文件到暂存区')
+      break
+
+    case 'commit':
+      const commitMsg = options.message || 'Update files'
+      commands.push(`git commit -m "${commitMsg}"`)
+      description.push('提交更改')
+      break
+
+    case 'push':
+      const pushBranch = options.branch || 'main'
+      commands.push(`git push -u origin ${pushBranch}`)
+      description.push('推送到远程仓库')
+      break
+
+    case 'pull':
+      const pullBranch = options.branch || 'main'
+      commands.push(`git pull origin ${pullBranch}`)
+      description.push('从远程仓库拉取更新')
+      break
+
+    case 'branch':
+      if (options.branch) {
+        commands.push(`git checkout -b ${options.branch}`)
+        description.push(`创建并切换到新分支: ${options.branch}`)
+      } else {
+        commands.push('git branch')
+        description.push('列出所有分支')
+      }
+      break
+
+    case 'merge':
+      if (options.branch) {
+        commands.push(`git merge ${options.branch}`)
+        description.push(`合并分支: ${options.branch}`)
+      }
+      break
+
+    default:
+      commands.push(`# 未知操作: ${options.operation}`)
+      description.push('请指定有效的操作类型')
+  }
+
+  return { commands, description }
+}
+
+/**
+ * Git 命令生成器工具
+ */
+export const generateGitCommandsTool: Tool = {
+  name: 'github_generate_commands',
+  description: '生成完整的 Git 操作命令（init、add、commit、push、pull、branch、merge 等）',
+  parameters: [
+    {
+      name: 'operation',
+      type: 'string',
+      description: '操作类型: init|add|commit|push|pull|branch|merge',
+      required: true,
+      enum: ['init', 'add', 'commit', 'push', 'pull', 'branch', 'merge'],
+    },
+    {
+      name: 'repoUrl',
+      type: 'string',
+      description: '仓库 URL（用于 init 操作）',
+      required: false,
+    },
+    {
+      name: 'branch',
+      type: 'string',
+      description: '分支名',
+      required: false,
+    },
+    {
+      name: 'message',
+      type: 'string',
+      description: '提交消息',
+      required: false,
+    },
+    {
+      name: 'files',
+      type: 'string',
+      description: '文件路径（逗号分隔，用于 add 操作）',
+      required: false,
+    },
+  ],
+  execute: async (args: {
+    operation: string
+    repoUrl?: string
+    branch?: string
+    message?: string
+    files?: string
+  }) => {
+    const { commands, description } = generateGitCommands(args)
+
+    // 生成完整的指导文档
+    const guidance: string[] = [
+      `## Git ${args.operation.toUpperCase()} 操作`,
+      '',
+      '### 命令',
+      '```bash',
+      ...commands,
+      '```',
+      '',
+      '### 说明',
+      ...description.map((d) => `- ${d}`),
+    ]
+
+    // 添加常用工作流示例
+    if (args.operation === 'init') {
+      guidance.push(
+        '',
+        '### 完整工作流示例',
+        '```bash',
+        '# 初始化仓库',
+        'git init',
+        '',
+        '# 添加文件',
+        'git add .',
+        '',
+        '# 提交',
+        'git commit -m "Initial commit"',
+        '',
+        '# 添加远程仓库',
+        'git remote add origin <repo-url>',
+        '',
+        '# 推送',
+        'git push -u origin main',
+        '```'
+      )
+    }
+
+    return {
+      success: true,
+      operation: args.operation,
+      commands,
+      description,
+      guidance: guidance.join('\n'),
+    }
+  },
+}
+
+// ==================== 导出 ====================
+
 // 导出所有 GitHub 工具
 export const githubTools = [
   searchGitHubReposTool,
@@ -906,6 +1542,13 @@ export const githubTools = [
   createGitHubIssueTool,
   searchGitHubCodeTool,
   cloneGitHubRepoTool,
+  // 新增工具
+  setGitHubTokenTool,
+  getGitHubTokenStatusTool,
+  createGitHubRepoTool,
+  pushToGitHubTool,
+  pushMultipleFilesTool,
+  generateGitCommandsTool,
 ]
 
 // 导出底层 API 函数

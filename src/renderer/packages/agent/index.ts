@@ -66,6 +66,17 @@ export {
   createGitHubIssueTool,
   searchGitHubCodeTool,
   githubTools,
+  // 新增 GitHub 工具
+  setGitHubTokenTool,
+  getGitHubTokenStatusTool,
+  createGitHubRepoTool,
+  pushToGitHubTool,
+  pushMultipleFilesTool,
+  generateGitCommandsTool,
+  // Token 管理函数
+  setGitHubToken,
+  getGitHubToken,
+  hasGitHubToken,
   // 底层 API
   searchRepositories,
   getFileContent,
@@ -94,10 +105,21 @@ export {
   analyzeProjectRequirements,
 } from './tools/project-generator'
 
+// CI/CD Builder 工具
+export {
+  generateGitHubActionsTool,
+  generateDockerfileTool,
+  generateDockerComposeTool,
+  generateDockerignoreTool,
+  generateGitignoreTool,
+  cicdBuilderTools,
+} from './tools/cicd-builder'
+
 // ==================== 工具集合 ====================
 import { searchTools } from './tools/web-search'
 import { githubTools } from './tools/github'
 import { projectGeneratorTools } from './tools/project-generator'
+import { cicdBuilderTools } from './tools/cicd-builder'
 import type { Tool } from './types'
 
 /**
@@ -107,6 +129,7 @@ export const allTools: Tool[] = [
   ...searchTools,
   ...githubTools,
   ...projectGeneratorTools,
+  ...cicdBuilderTools,
 ]
 
 /**
@@ -124,6 +147,7 @@ export const toolsByCategory = {
   search: searchTools,
   github: githubTools,
   projectGenerator: projectGeneratorTools,
+  cicdBuilder: cicdBuilderTools,
 } as const
 
 // ==================== 工具函数 ====================
@@ -181,11 +205,31 @@ export function validateToolParameters(
 export const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户完成各种任务。
 
 你可以使用以下工具：
-- 网络搜索 (web_search): 搜索互联网获取最新信息
-- 获取网页 (fetch_webpage): 获取特定网页的内容
-- GitHub 搜索 (github_search_repos): 搜索 GitHub 上的开源仓库
-- GitHub 文件 (github_get_file): 获取 GitHub 仓库中的文件内容
-- 项目生成 (generate_project): 根据配置生成项目脚手架
+
+## 网络搜索
+- web_search: 搜索互联网获取最新信息
+- fetch_webpage: 获取特定网页的内容
+
+## GitHub 工具
+- github_set_token: 设置 GitHub Token
+- github_token_status: 检查 Token 状态
+- github_search_repos: 搜索 GitHub 仓库
+- github_get_file: 获取仓库文件内容
+- github_create_repo: 创建新仓库
+- github_push_files: 推送文件到仓库
+- github_push_multiple_files: 批量推送文件
+- github_generate_commands: 生成 Git 命令
+
+## 项目生成
+- generate_project: 根据配置生成项目脚手架
+- analyze_project_requirements: 分析项目需求
+
+## CI/CD Builder
+- cicd_github_actions: 生成 GitHub Actions 工作流
+- cicd_dockerfile: 生成 Dockerfile
+- cicd_docker_compose: 生成 docker-compose.yml
+- cicd_dockerignore: 生成 .dockerignore
+- cicd_gitignore: 生成 .gitignore
 
 请遵循以下原则：
 1. 理解用户需求，选择最合适的工具

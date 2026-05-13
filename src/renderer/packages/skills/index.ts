@@ -15,3 +15,6 @@ export { createSkillFromConversation } from './creator'
 
 // 技能改进器导出
 export { improveSkill } from './improver'
+
+// 预设技能导出
+export { basicSkills, openclawSkills, importPresetSkills, getAllPresetSkills } from './presets'
