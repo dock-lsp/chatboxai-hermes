@@ -9,7 +9,7 @@ import {
   IconChevronRight,
   IconCircleDottedLetterM,
   IconFileText,
-  IconFolderTree,
+  IconFile,
   IconInfoCircle,
   IconKeyboard,
   IconMessages,
@@ -96,7 +96,7 @@ const ITEMS = [
   {
     key: 'file-tree',
     label: 'File Manager',
-    icon: <IconFolderTree className="w-full h-full" />,
+    icon: <IconFile className="w-full h-full" />,
   },
   {
     key: 'general',
