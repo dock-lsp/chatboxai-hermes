@@ -7,8 +7,6 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 
-const { ipcRenderer } = window.require('electron')
-
 export interface CloneResult {
   success: boolean
   output: string
@@ -25,13 +23,32 @@ export interface CloneOptions {
 }
 
 /**
+ * 安全调用 electronAPI
+ */
+function getElectronAPI(): any {
+  if (typeof window !== 'undefined' && window.electronAPI) {
+    return window.electronAPI
+  }
+  return null
+}
+
+/**
  * 执行 git clone 命令 (通过 IPC)
  */
 export async function executeGitClone(options: CloneOptions): Promise<CloneResult> {
   const { repoUrl, targetDir, branch, depth } = options
 
   try {
-    const result = await ipcRenderer.invoke('git:clone', {
+    const api = getElectronAPI()
+    if (!api) {
+      return {
+        success: false,
+        output: '',
+        error: '当前环境不支持执行 Git 命令（非 Electron 桌面环境）',
+      }
+    }
+
+    const result = await api.invoke('git:clone', {
       repoUrl,
       targetDir,
       branch,
@@ -64,13 +81,11 @@ export async function executeGitClone(options: CloneOptions): Promise<CloneResul
  * 从仓库 URL 提取仓库名称
  */
 function extractRepoName(url: string): string {
-  // 处理 https://github.com/owner/repo.git 格式
   const httpsMatch = url.match(/\/([^\/]+?)(?:\.git)?$/)
   if (httpsMatch) {
     return httpsMatch[1]
   }
 
-  // 处理 git@github.com:owner/repo.git 格式
   const sshMatch = url.match(/:([^\/]+?)(?:\.git)?$/)
   if (sshMatch) {
     return sshMatch[1]
@@ -84,7 +99,9 @@ function extractRepoName(url: string): string {
  */
 export async function checkGitInstalled(): Promise<boolean> {
   try {
-    return await ipcRenderer.invoke('git:check')
+    const api = getElectronAPI()
+    if (!api) return false
+    return await api.invoke('git:check')
   } catch {
     return false
   }
@@ -94,7 +111,6 @@ export async function checkGitInstalled(): Promise<boolean> {
  * 获取默认克隆目录
  */
 export function getDefaultCloneDir(): string {
-  // 使用用户的 home 目录下的 Projects 文件夹
   const homeDir = os.homedir() || process.cwd()
   return path.join(homeDir, 'Projects')
 }

@@ -1,11 +1,11 @@
 /**
  * 文件上传工具
- * 支持图片、文档、ZIP 文件上传和分析
+ * 支持图片、文档文件上传和分析
+ * 注意：ZIP 文件暂不支持解压（需要安装 jszip 依赖）
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
-import * as JSZip from 'jszip'
 
 export interface UploadedFile {
   id: string
@@ -61,37 +61,6 @@ export function isZipFile(filename: string): boolean {
 }
 
 /**
- * 解压并读取 ZIP 文件内容
- */
-export async function readZipFile(filePath: string): Promise<ZipContent[]> {
-  const data = await fs.promises.readFile(filePath)
-  const zip = await JSZip.loadAsync(data)
-
-  const contents: ZipContent[] = []
-
-  for (const [filePath, zipEntry] of Object.entries(zip.files)) {
-    if (zipEntry.dir) continue
-
-    const isText = isTextFile(filePath)
-    let content: string | undefined
-
-    if (isText && zipEntry._data?.uncompressedSize < 1024 * 1024) { // 小于 1MB 的文本文件
-      content = await zipEntry.async('string')
-    }
-
-    contents.push({
-      name: path.basename(filePath),
-      path: filePath,
-      size: zipEntry._data?.uncompressedSize || 0,
-      content,
-      isText,
-    })
-  }
-
-  return contents
-}
-
-/**
  * 检测是否为文本文件
  */
 function isTextFile(filename: string): boolean {
@@ -104,7 +73,7 @@ function isTextFile(filename: string): boolean {
     '.dockerfile', '.gitignore', '.env',
   ]
   const ext = path.extname(filename).toLowerCase()
-  return textExts.includes(ext) || !ext // 无扩展名也视为文本
+  return textExts.includes(ext) || !ext
 }
 
 /**
@@ -127,29 +96,21 @@ export async function processUploadedFile(filePath: string): Promise<UploadedFil
   }
 
   if (isImage) {
-    // 图片转为 base64
     uploadedFile.base64 = await readFileAsBase64(filePath)
   } else if (isZip) {
-    // ZIP 文件解压读取
-    uploadedFile.zipContents = await readZipFile(filePath)
+    // ZIP 文件暂不支持解压，仅记录信息
+    uploadedFile.zipContents = []
   } else if (isTextFile(fileName) && stats.size < 5 * 1024 * 1024) {
-    // 小于 5MB 的文本文件读取内容
     uploadedFile.content = await readTextFile(filePath)
   }
 
   return uploadedFile
 }
 
-/**
- * 生成文件 ID
- */
 function generateFileId(): string {
   return `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
 
-/**
- * 获取文件类型
- */
 function getFileType(filename: string): string {
   const ext = path.extname(filename).toLowerCase()
   const typeMap: Record<string, string> = {
@@ -191,18 +152,8 @@ export function analyzeFileForAI(file: UploadedFile): string {
 
   if (file.isImage) {
     analysis += `这是一个图片文件。\n`
-  } else if (file.isZip && file.zipContents) {
-    analysis += `这是一个 ZIP 压缩文件，包含 ${file.zipContents.length} 个文件:\n`
-    for (const item of file.zipContents.slice(0, 20)) { // 最多显示 20 个
-      analysis += `  - ${item.path} (${formatFileSize(item.size)})\n`
-      if (item.content && item.isText) {
-        const preview = item.content.slice(0, 500)
-        analysis += `    内容预览:\n${preview}${item.content.length > 500 ? '...' : ''}\n\n`
-      }
-    }
-    if (file.zipContents.length > 20) {
-      analysis += `  ... 还有 ${file.zipContents.length - 20} 个文件\n`
-    }
+  } else if (file.isZip) {
+    analysis += `这是一个 ZIP 压缩文件（暂不支持解压预览）。\n`
   } else if (file.content) {
     analysis += `内容:\n${file.content.slice(0, 10000)}`
     if (file.content.length > 10000) {
