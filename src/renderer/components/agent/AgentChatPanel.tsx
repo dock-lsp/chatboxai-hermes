@@ -2,12 +2,13 @@
  * AgentChatPanel.tsx
  * 智能体聊天面板组件
  *
- * 提供类似聊天界面的交互体验，支持：
- * - 消息输入和发送
- * - AI 回复显示
- * - 工具调用过程可视化
- * - 思考步骤展开查看
- * - 工具启用/禁用控制
+ * 接入万象Chat的 AI 模型系统，提供真实的流式 AI 对话体验。
+ * 支持：
+ * - 真实 AI 流式回复（通过 streamText）
+ * - AI 思考过程可视化（reasoningContent）
+ * - 工具调用过程和结果展示
+ * - 中断生成
+ * - Markdown 渲染
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react'
@@ -46,13 +47,14 @@ import {
   IconCode,
   IconCheck,
   IconX,
+  IconSquare,
+  IconSparkles,
 } from '@tabler/icons-react'
 import { useDisclosure, useMediaQuery } from '@mantine/hooks'
 import type {
   AgentMessage,
   ThoughtStep,
   ToolCall,
-  StreamChunk,
 } from '@/packages/agent'
 import {
   useAgentStore,
@@ -62,6 +64,7 @@ import {
 } from '@/packages/agent'
 import { ThoughtProcess } from './ThoughtProcess'
 import { ToolSelector } from './ToolSelector'
+import Markdown from '@/components/Markdown'
 
 /**
  * 消息气泡组件属性
@@ -74,6 +77,7 @@ interface MessageBubbleProps {
 /**
  * 消息气泡组件
  * 显示单条聊天消息，根据角色显示不同样式
+ * 支持 Markdown 渲染
  */
 function MessageBubble({ message, isLast }: MessageBubbleProps) {
   const isUser = message.role === 'user'
@@ -113,9 +117,15 @@ function MessageBubble({ message, isLast }: MessageBubbleProps) {
             borderBottomLeftRadius: !isUser ? 4 : undefined,
           }}
         >
-          <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-            {message.content}
-          </Text>
+          {isUser ? (
+            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+              {message.content}
+            </Text>
+          ) : (
+            <Box style={{ fontSize: '14px' }}>
+              <Markdown message={{ contentParts: [{ type: 'text', text: message.content }] } as any} />
+            </Box>
+          )}
 
           {/* 显示工具调用信息 */}
           {message.toolCalls && message.toolCalls.length > 0 && (
@@ -268,6 +278,96 @@ function CodeBlock({ code, maxHeight = 150 }: CodeBlockProps) {
 }
 
 /**
+ * 流式消息气泡组件
+ * 显示正在流式生成的 AI 回复
+ */
+interface StreamingMessageProps {
+  content: string
+  reasoning: string
+  toolCalls: ToolCall[]
+}
+
+/**
+ * 流式消息气泡组件
+ */
+function StreamingMessage({ content, reasoning, toolCalls }: StreamingMessageProps) {
+  const [showReasoning, { toggle: toggleReasoning }] = useDisclosure(false)
+
+  if (!content && !reasoning && toolCalls.length === 0) {
+    return null
+  }
+
+  return (
+    <Flex direction="column" align="flex-start" gap="xs" w="100%">
+      <Group gap="xs" align="flex-start">
+        <ThemeIcon size="md" radius="xl" color="blue" variant="light">
+          <IconRobot size={16} />
+        </ThemeIcon>
+
+        <Paper
+          p="md"
+          radius="lg"
+          bg="gray.0"
+          c="dark"
+          maw="80%"
+          style={{ borderBottomLeftRadius: 4 }}
+        >
+          {/* 推理内容折叠 */}
+          {reasoning && (
+            <Box mb="sm">
+              <Group gap="xs" mb={4}>
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="grape"
+                  onClick={toggleReasoning}
+                >
+                  <IconBrain size={14} />
+                </ActionIcon>
+                <Text size="xs" c="grape" fw={500} style={{ cursor: 'pointer' }} onClick={toggleReasoning}>
+                  思考过程
+                </Text>
+              </Group>
+              <Collapse in={showReasoning}>
+                <Paper p="xs" bg="grape.0" radius="sm">
+                  <Text size="xs" c="grape" style={{ whiteSpace: 'pre-wrap', fontStyle: 'italic' }}>
+                    {reasoning}
+                  </Text>
+                </Paper>
+              </Collapse>
+            </Box>
+          )}
+
+          {/* 工具调用 */}
+          {toolCalls.length > 0 && (
+            <Stack gap="xs" mb="sm">
+              {toolCalls.map((toolCall, index) => (
+                <ToolCallBadge key={index} toolCall={toolCall} />
+              ))}
+            </Stack>
+          )}
+
+          {/* 流式文本内容 */}
+          {content && (
+            <Box style={{ fontSize: '14px' }}>
+              <Markdown message={{ contentParts: [{ type: 'text', text: content }] } as any} />
+            </Box>
+          )}
+
+          {/* 加载指示器 */}
+          {!content && (
+            <Group gap="xs">
+              <Loader size="xs" />
+              <Text size="xs" c="dimmed">正在思考...</Text>
+            </Group>
+          )}
+        </Paper>
+      </Group>
+    </Flex>
+  )
+}
+
+/**
  * 输入框组件属性
  */
 interface ChatInputProps {
@@ -345,7 +445,9 @@ interface AgentChatPanelProps {
 /**
  * 智能体聊天面板组件
  *
- * 主聊天界面组件，整合消息显示、输入、工具调用展示等功能
+ * 主聊天界面组件，整合真实 AI 流式回复、消息显示、
+ * 思考过程展示、工具调用可视化等功能。
+ * 接入万象Chat的模型系统，使用 streamText 进行流式生成。
  */
 export function AgentChatPanel({
   sessionId,
@@ -360,10 +462,15 @@ export function AgentChatPanel({
   const messages = useCurrentMessages()
   const thoughtSteps = useCurrentThoughtSteps()
   const isLoading = useAgentStore((state) => state.isLoading)
+  const isStreaming = useAgentStore((state) => state.isStreaming)
   const error = useAgentStore((state) => state.error)
-  const sendMessage = useAgentStore((state) => state.sendMessage)
+  const streamingContent = useAgentStore((state) => state.streamingContent)
+  const streamingReasoning = useAgentStore((state) => state.streamingReasoning)
+  const streamingToolCalls = useAgentStore((state) => state.streamingToolCalls)
   const createSession = useAgentStore((state) => state.createSession)
   const clearMessages = useAgentStore((state) => state.clearMessages)
+  const stopGeneration = useAgentStore((state) => state.stopGeneration)
+  const agent = useAgentStore((state) => state.agent)
 
   // UI 状态
   const [toolSelectorOpened, { toggle: toggleToolSelector }] = useDisclosure(false)
@@ -379,18 +486,100 @@ export function AgentChatPanel({
         behavior: 'smooth',
       })
     }
-  }, [messages])
+  }, [messages, streamingContent])
 
-  // 发送消息处理
+  /**
+   * 发送消息处理
+   * 使用 Agent 的 sendMessageStream 进行流式生成
+   */
   const handleSendMessage = useCallback(
     async (content: string) => {
       // 确保有会话
-      if (!session) {
-        createSession()
+      let currentSessionId = session?.id
+      if (!currentSessionId) {
+        currentSessionId = createSession()
       }
-      await sendMessage(content)
+
+      // 创建 AbortController 用于中断
+      const abortController = new AbortController()
+      useAgentStore.setState({
+        isStreaming: true,
+        isLoading: true,
+        error: null,
+        abortController,
+        streamingContent: '',
+        streamingReasoning: '',
+        streamingToolCalls: [],
+      })
+
+      try {
+        // 使用 Agent 的流式发送方法
+        const stream = agent.sendMessageStream(currentSessionId, content, {
+          signal: abortController.signal,
+        })
+
+        for await (const chunk of stream) {
+          // 检查是否已中断
+          if (abortController.signal.aborted) {
+            break
+          }
+
+          switch (chunk.type) {
+            case 'text':
+              useAgentStore.getState().appendStreamingContent(chunk.content || '')
+              break
+
+            case 'thought':
+              // 思考步骤已在 Agent 内部管理
+              break
+
+            case 'reasoning':
+              useAgentStore.getState().appendStreamingReasoning(chunk.content || '')
+              break
+
+            case 'tool_call':
+              if (chunk.toolCall) {
+                useAgentStore.getState().addStreamingToolCall(chunk.toolCall)
+              }
+              break
+
+            case 'error':
+              useAgentStore.setState({
+                error: chunk.error || '未知错误',
+              })
+              break
+
+            case 'done':
+              // 流式完成，更新会话状态
+              const updatedSession = agent.getSession(currentSessionId!)
+              if (updatedSession) {
+                useAgentStore.setState((state) => ({
+                  sessions: state.sessions.map((s) =>
+                    s.id === currentSessionId ? updatedSession : s
+                  ),
+                }))
+              }
+              break
+          }
+        }
+      } catch (err) {
+        // 检查是否是取消操作
+        if (abortController.signal.aborted) {
+          // 用户主动取消，不显示错误
+        } else {
+          useAgentStore.setState({
+            error: err instanceof Error ? err.message : '发送消息失败',
+          })
+        }
+      } finally {
+        useAgentStore.setState({
+          isStreaming: false,
+          isLoading: false,
+          abortController: null,
+        })
+      }
     },
-    [session, createSession, sendMessage]
+    [session, createSession, agent]
   )
 
   // 清空对话
@@ -400,8 +589,16 @@ export function AgentChatPanel({
     }
   }, [session, clearMessages])
 
+  // 停止生成
+  const handleStop = useCallback(() => {
+    stopGeneration()
+  }, [stopGeneration])
+
   // 过滤掉系统消息
   const displayMessages = messages.filter((m) => m.role !== 'system')
+
+  // 是否正在生成中
+  const isGenerating = isLoading || isStreaming
 
   return (
     <Paper
@@ -413,10 +610,15 @@ export function AgentChatPanel({
       <Group p="md" justify="space-between" style={{ borderBottom: '1px solid #eee' }}>
         <Group gap="xs">
           <ThemeIcon size="lg" radius="md" color="blue" variant="light">
-            <IconRobot size={20} />
+            <IconSparkles size={20} />
           </ThemeIcon>
           <Text fw={500}>AI 智能体助手</Text>
-          {isLoading && <Loader size="sm" />}
+          {isGenerating && <Loader size="sm" />}
+          {isStreaming && (
+            <Badge size="sm" color="blue" variant="light">
+              流式生成中
+            </Badge>
+          )}
         </Group>
 
         <Group gap="xs">
@@ -476,26 +678,38 @@ export function AgentChatPanel({
             p="md"
           >
             <Stack gap="md">
-              {displayMessages.length === 0 ? (
+              {displayMessages.length === 0 && !isGenerating ? (
                 <Paper p="xl" bg="gray.0" radius="md" ta="center">
                   <ThemeIcon size="xl" radius="xl" color="blue" variant="light" mb="md">
-                    <IconRobot size={32} />
+                    <IconSparkles size={32} />
                   </ThemeIcon>
                   <Text fw={500} mb="xs">
                     开始与 AI 助手对话
                   </Text>
                   <Text size="sm" c="dimmed">
-                    我可以帮你搜索信息、查找 GitHub 项目、生成项目代码等
+                    我可以帮你搜索信息、查找 GitHub 项目、生成项目代码等。
+                    回复将使用万象Chat配置的 AI 模型生成。
                   </Text>
                 </Paper>
               ) : (
-                displayMessages.map((message, index) => (
-                  <MessageBubble
-                    key={index}
-                    message={message}
-                    isLast={index === displayMessages.length - 1}
-                  />
-                ))
+                <>
+                  {displayMessages.map((message, index) => (
+                    <MessageBubble
+                      key={index}
+                      message={message}
+                      isLast={index === displayMessages.length - 1}
+                    />
+                  ))}
+
+                  {/* 流式消息气泡 */}
+                  {isGenerating && (
+                    <StreamingMessage
+                      content={streamingContent}
+                      reasoning={streamingReasoning}
+                      toolCalls={streamingToolCalls}
+                    />
+                  )}
+                </>
               )}
 
               {/* 错误提示 */}
@@ -509,11 +723,26 @@ export function AgentChatPanel({
 
           {/* 输入区域 */}
           <Box p="md" style={{ borderTop: '1px solid #eee' }}>
-            <ChatInput
-              onSend={handleSendMessage}
-              disabled={isLoading}
-              placeholder={placeholder}
-            />
+            <Group gap="xs">
+              <ChatInput
+                onSend={handleSendMessage}
+                disabled={isGenerating}
+                placeholder={placeholder}
+              />
+              {/* 中断生成按钮 */}
+              {isGenerating && (
+                <Tooltip label="停止生成">
+                  <ActionIcon
+                    variant="filled"
+                    color="red"
+                    size="lg"
+                    onClick={handleStop}
+                  >
+                    <IconSquare size={20} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+            </Group>
           </Box>
         </Stack>
 

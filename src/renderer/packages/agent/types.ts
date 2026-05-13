@@ -127,7 +127,7 @@ export interface AgentResponse {
 
 /** 流式响应块 */
 export interface StreamChunk {
-  type: 'text' | 'tool_call' | 'thought' | 'error' | 'done'
+  type: 'text' | 'tool_call' | 'thought' | 'reasoning' | 'error' | 'done'
   content?: string
   toolCall?: ToolCall
   thoughtStep?: ThoughtStep

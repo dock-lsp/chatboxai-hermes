@@ -34,9 +34,9 @@ export type { ToolSelectorProps, CompactToolSelectorProps, ToolBadgeProps } from
 
 /**
  * 项目生成器面板
- * 提供项目生成功能的完整界面，支持多种项目类型
+ * 通过 AI 模型生成项目代码，解析代码块提取文件
  */
-export { ProjectGeneratorPanel, CompactProjectGenerator } from './ProjectGeneratorPanel'
+export { ProjectGeneratorPanel } from './ProjectGeneratorPanel'
 export type { ProjectGeneratorPanelProps } from './ProjectGeneratorPanel'
 
 // ==================== 默认导出 ====================

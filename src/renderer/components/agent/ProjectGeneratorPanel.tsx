@@ -2,13 +2,15 @@
  * ProjectGeneratorPanel.tsx
  * 项目生成器面板组件
  *
- * 提供项目生成功能的完整界面，支持：
- * - 输入项目描述
- * - 选择项目类型（Flutter/React/Vue/Android/Python/Node.js）
- * - 显示生成的项目结构（树形）
- * - 显示生成的文件列表
- * - 一键保存到指定目录
- * - 进度显示
+ * 接入万象Chat的 AI 模型系统，通过真实 AI 生成项目代码。
+ * 支持：
+ * - 用户输入描述后，发送给 AI（带系统提示要求输出项目文件）
+ * - AI 回复后解析代码块，提取文件路径和内容
+ * - 生成的项目展示：目录树支持折叠/展开
+ * - 文件查看器支持全屏显示
+ * - 使用 Mantine 的 Accordion 实现目录折叠
+ * - 编辑器区域添加全屏按钮
+ * - 支持中断生成
  */
 
 import React, { useState, useCallback, useMemo } from 'react'
@@ -22,7 +24,6 @@ import {
   Badge,
   Select,
   Textarea,
-  Tree,
   Checkbox,
   Progress,
   Accordion,
@@ -34,10 +35,8 @@ import {
   ScrollArea,
   Code,
   Modal,
-  FileInput,
   Loader,
   Alert,
-  SegmentedControl,
   Flex,
 } from '@mantine/core'
 import {
@@ -57,25 +56,24 @@ import {
   IconFolderOpen,
   IconChevronRight,
   IconChevronDown,
-  IconInfoCircle,
   IconSparkles,
-  IconSettings,
+  IconMaximize,
+  IconMinimize,
+  IconSquare,
 } from '@tabler/icons-react'
 import { useDisclosure, useMediaQuery } from '@mantine/hooks'
-import type {
-  ProjectGenerationConfig,
-  GeneratedFile,
-  GeneratedProject,
-} from '@/packages/agent'
-import {
-  generateProject,
-  analyzeProjectRequirements,
-  PROJECT_TYPES,
-} from '@/packages/agent'
+import { getModel } from '@shared/models'
+import { getModelSettings } from '@shared/utils/model_settings'
+import type { ModelInterface } from '@shared/models/types'
+import type { Message, StreamTextResult } from '@shared/types'
+import { createModelDependencies } from '@/adapters'
+import { streamText } from '@/packages/model-calls'
+import { settingsStore } from '@/stores/settingsStore'
+import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
+import Markdown from '@/components/Markdown'
 
 /**
  * 项目类型配置
- * 定义不同项目类型的图标、颜色和描述
  */
 const PROJECT_TYPE_CONFIG: Record<
   string,
@@ -83,94 +81,65 @@ const PROJECT_TYPE_CONFIG: Record<
     icon: React.ElementType
     color: string
     description: string
-    features: string[]
   }
 > = {
   react: {
     icon: IconBrandReact,
     color: 'blue',
     description: 'React 前端应用',
-    features: ['Vite', 'TypeScript', 'ESLint', 'Prettier'],
   },
   vue: {
     icon: IconBrandVue,
     color: 'green',
     description: 'Vue 前端应用',
-    features: ['Vite', 'TypeScript', 'Vue Router', 'Pinia'],
   },
   python: {
     icon: IconBrandPython,
     color: 'yellow',
     description: 'Python 项目',
-    features: ['pyproject.toml', 'Ruff', 'MyPy', 'pytest'],
   },
   nodejs: {
     icon: IconBrandNodejs,
     color: 'green',
     description: 'Node.js 后端项目',
-    features: ['TypeScript', 'Express/Fastify', 'Jest', 'ESLint'],
   },
   flutter: {
     icon: IconDeviceMobile,
     color: 'cyan',
     description: 'Flutter 移动应用',
-    features: ['Material Design', '状态管理', '路由导航'],
   },
   android: {
     icon: IconBrandAndroid,
     color: 'green',
     description: 'Android 原生应用',
-    features: ['Kotlin', 'Jetpack Compose', 'MVVM'],
   },
   generic: {
     icon: IconFolder,
     color: 'gray',
     description: '通用项目结构',
-    features: ['README', '.gitignore'],
   },
 }
 
 /**
- * 项目特性选项
+ * 项目类型列表
  */
-const PROJECT_FEATURES: Record<string, { label: string; description: string }[]> = {
-  react: [
-    { label: 'router', description: 'React Router 路由' },
-    { label: 'state-management', description: 'Zustand + React Query 状态管理' },
-    { label: 'ui-library', description: 'Radix UI 组件库' },
-    { label: 'styling', description: 'Tailwind CSS 样式' },
-  ],
-  vue: [
-    { label: 'router', description: 'Vue Router 路由' },
-    { label: 'state-management', description: 'Pinia 状态管理' },
-  ],
-  python: [
-    { label: 'web-framework', description: 'FastAPI Web 框架' },
-    { label: 'data-processing', description: 'Pandas + NumPy 数据处理' },
-    { label: 'testing', description: 'pytest 测试框架' },
-    { label: 'cli', description: 'Click CLI 工具' },
-    { label: 'http-client', description: 'HTTPX 客户端' },
-  ],
-  nodejs: [
-    { label: 'express', description: 'Express Web 框架' },
-    { label: 'fastify', description: 'Fastify Web 框架' },
-    { label: 'database', description: 'Prisma ORM + 数据库' },
-    { label: 'testing', description: 'Jest 测试框架' },
-    { label: 'http-client', description: 'Axios HTTP 客户端' },
-  ],
-  flutter: [
-    { label: 'state-management', description: 'Provider/Riverpod 状态管理' },
-    { label: 'routing', description: 'GoRouter 路由' },
-    { label: 'local-storage', description: 'SharedPreferences 本地存储' },
-    { label: 'http-client', description: 'Dio HTTP 客户端' },
-  ],
-  android: [
-    { label: 'compose', description: 'Jetpack Compose UI' },
-    { label: 'room', description: 'Room 数据库' },
-    { label: 'retrofit', description: 'Retrofit 网络' },
-    { label: 'hilt', description: 'Hilt 依赖注入' },
-  ],
-  generic: [],
+const PROJECT_TYPES = [
+  { id: 'react', name: 'React' },
+  { id: 'vue', name: 'Vue' },
+  { id: 'python', name: 'Python' },
+  { id: 'nodejs', name: 'Node.js' },
+  { id: 'flutter', name: 'Flutter' },
+  { id: 'android', name: 'Android' },
+  { id: 'generic', name: 'Generic' },
+]
+
+/**
+ * 生成的文件
+ */
+interface GeneratedFile {
+  path: string
+  content: string
+  language: string
 }
 
 /**
@@ -185,15 +154,100 @@ interface FileTreeNode {
 }
 
 /**
+ * 构建项目生成的系统提示
+ */
+function buildProjectSystemPrompt(projectType: string, projectName: string): string {
+  return `你是一个专业的项目生成助手。用户会描述他们想要的项目，你需要生成完整的项目文件。
+
+项目类型: ${projectType}
+项目名称: ${projectName}
+
+请严格按照以下格式输出每个文件，每个文件用代码块包裹，代码块的语言标注为文件路径：
+
+\`\`\`filepath:src/index.tsx
+// 文件内容
+\`\`\`
+
+\`\`\`filepath:package.json
+{
+  "name": "${projectName}",
+  ...
+}
+\`\`\`
+
+要求：
+1. 生成完整可运行的项目代码
+2. 每个文件必须使用 \`\`\`filepath:路径 格式标注
+3. 包含 package.json / pyproject.toml / pubspec.yaml 等项目配置文件
+4. 包含 README.md 文件
+5. 代码要符合最佳实践
+6. 只输出代码块，不要输出多余的解释文字`
+}
+
+/**
+ * 从 AI 回复中解析文件
+ * 支持格式: ```filepath:path\ncontent\n```
+ */
+function parseFilesFromResponse(text: string): GeneratedFile[] {
+  const files: GeneratedFile[] = []
+
+  // 匹配 ```filepath:path 或 ```language:path 格式
+  const regex = /```(?:filepath|[\w]+):([^\n]+)\n([\s\S]*?)```/g
+  let match
+
+  while ((match = regex.exec(text)) !== null) {
+    const filePath = match[1].trim()
+    const content = match[2].trim()
+
+    // 推断语言
+    const ext = filePath.split('.').pop() || ''
+    const languageMap: Record<string, string> = {
+      ts: 'typescript',
+      tsx: 'typescript',
+      js: 'javascript',
+      jsx: 'javascript',
+      py: 'python',
+      rs: 'rust',
+      go: 'go',
+      java: 'java',
+      kt: 'kotlin',
+      dart: 'dart',
+      json: 'json',
+      yaml: 'yaml',
+      yml: 'yaml',
+      toml: 'toml',
+      md: 'markdown',
+      css: 'css',
+      scss: 'scss',
+      html: 'html',
+      xml: 'xml',
+      sh: 'bash',
+      bash: 'bash',
+      sql: 'sql',
+      graphql: 'graphql',
+      vue: 'vue',
+      svelte: 'svelte',
+    }
+
+    files.push({
+      path: filePath,
+      content,
+      language: languageMap[ext] || ext || 'text',
+    })
+  }
+
+  return files
+}
+
+/**
  * 构建文件树
- * 从生成的文件列表构建树形结构
  */
 function buildFileTree(files: GeneratedFile[]): FileTreeNode[] {
   const root: FileTreeNode[] = []
   const nodeMap = new Map<string, FileTreeNode>()
 
   files.forEach((file) => {
-    const parts = file.path.split('/')
+    const parts = file.path.split('/').filter(Boolean)
     let currentPath = ''
 
     parts.forEach((part, index) => {
@@ -224,7 +278,21 @@ function buildFileTree(files: GeneratedFile[]): FileTreeNode[] {
     })
   })
 
-  return root
+  // 排序：目录在前，文件在后
+  const sortNodes = (nodes: FileTreeNode[]): FileTreeNode[] => {
+    return nodes.sort((a, b) => {
+      if (a.type === 'directory' && b.type === 'file') return -1
+      if (a.type === 'file' && b.type === 'directory') return 1
+      return a.label.localeCompare(b.label)
+    }).map((node) => {
+      if (node.children) {
+        return { ...node, children: sortNodes(node.children) }
+      }
+      return node
+    })
+  }
+
+  return sortNodes(root)
 }
 
 /**
@@ -238,7 +306,7 @@ interface FileTreeProps {
 
 /**
  * 文件树组件
- * 递归渲染文件树
+ * 使用 Accordion 实现目录折叠/展开
  */
 function FileTree({ nodes, onSelectFile, selectedFile }: FileTreeProps) {
   return (
@@ -257,7 +325,7 @@ function FileTree({ nodes, onSelectFile, selectedFile }: FileTreeProps) {
 }
 
 /**
- * 文件树节点组件属性
+ * 文件树节点组件
  */
 interface FileTreeNodeComponentProps {
   node: FileTreeNode
@@ -266,9 +334,6 @@ interface FileTreeNodeComponentProps {
   level: number
 }
 
-/**
- * 文件树节点组件
- */
 function FileTreeNodeComponent({
   node,
   onSelectFile,
@@ -316,7 +381,13 @@ function FileTreeNodeComponent({
       </Group>
 
       {node.type === 'directory' && node.children && (
-        <Collapse in={opened}>
+        <Box
+          style={{
+            maxHeight: opened ? '2000px' : '0',
+            overflow: 'hidden',
+            transition: 'max-height 0.3s ease',
+          }}
+        >
           {node.children.map((child) => (
             <FileTreeNodeComponent
               key={child.id}
@@ -326,52 +397,77 @@ function FileTreeNodeComponent({
               level={level + 1}
             />
           ))}
-        </Collapse>
+        </Box>
       )}
     </Box>
   )
 }
 
 /**
- * 项目类型卡片组件属性
+ * 文件查看器组件属性
  */
-interface ProjectTypeCardProps {
-  type: string
-  isSelected: boolean
-  onClick: () => void
+interface FileViewerProps {
+  file: GeneratedFile | null
+  isFullscreen?: boolean
+  onToggleFullscreen?: () => void
 }
 
 /**
- * 项目类型卡片组件
+ * 文件查看器组件
+ * 支持全屏显示
  */
-function ProjectTypeCard({ type, isSelected, onClick }: ProjectTypeCardProps) {
-  const config = PROJECT_TYPE_CONFIG[type]
-  const Icon = config.icon
+function FileViewer({ file, isFullscreen, onToggleFullscreen }: FileViewerProps) {
+  if (!file) {
+    return (
+      <Flex justify="center" align="center" h="100%">
+        <Text c="dimmed">选择左侧文件查看内容</Text>
+      </Flex>
+    )
+  }
 
   return (
-    <Paper
-      p="md"
-      radius="md"
-      withBorder
-      style={{
-        cursor: 'pointer',
-        borderColor: isSelected ? `var(--mantine-color-${config.color}-6)` : undefined,
-        backgroundColor: isSelected ? `var(--mantine-color-${config.color}-0)` : undefined,
-      }}
-      onClick={onClick}
-    >
-      <Stack align="center" gap="xs">
-        <ThemeIcon size="xl" radius="md" color={config.color} variant={isSelected ? 'filled' : 'light'}>
-          <Icon size={28} />
-        </ThemeIcon>
-        <Text fw={500} size="sm" tt="capitalize">
-          {type}
-        </Text>
-        <Text size="xs" c="dimmed" ta="center">
-          {config.description}
-        </Text>
-      </Stack>
-    </Paper>
+    <Stack gap="xs" h="100%">
+      {/* 文件头部 */}
+      <Group justify="space-between">
+        <Group gap="xs">
+          <ThemeIcon size="sm" color="blue" variant="light">
+            <IconFile size={14} />
+          </ThemeIcon>
+          <Text fw={500} size="sm">
+            {file.path}
+          </Text>
+          <Badge size="sm" variant="light">
+            {file.language}
+          </Badge>
+        </Group>
+        {onToggleFullscreen && (
+          <Tooltip label={isFullscreen ? '退出全屏' : '全屏查看'}>
+            <ActionIcon variant="subtle" onClick={onToggleFullscreen}>
+              {isFullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </Group>
+
+      {/* 文件内容 */}
+      <Paper
+        p="sm"
+        bg="dark.9"
+        radius="sm"
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          fontFamily: 'monospace',
+          fontSize: isFullscreen ? '14px' : '12px',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          color: 'var(--mantine-color-gray-0)',
+          lineHeight: 1.6,
+        }}
+      >
+        {file.content}
+      </Paper>
+    </Stack>
   )
 }
 
@@ -379,40 +475,44 @@ function ProjectTypeCard({ type, isSelected, onClick }: ProjectTypeCardProps) {
  * 项目生成器面板组件属性
  */
 interface ProjectGeneratorPanelProps {
-  /** 自定义样式 */
   className?: string
 }
 
 /**
  * 项目生成器面板组件
  *
- * 主组件，提供完整的项目生成界面
+ * 通过 AI 模型生成项目代码，解析 AI 回复中的代码块提取文件。
  */
 export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps) {
   // 表单状态
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
   const [projectType, setProjectType] = useState<string>('react')
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
-  const [outputPath, setOutputPath] = useState('')
 
   // 生成状态
   const [isGenerating, setIsGenerating] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null)
+  const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([])
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [streamingText, setStreamingText] = useState('')
 
   // UI 状态
-  const [previewModalOpened, { open: openPreviewModal, close: closePreviewModal }] = useDisclosure(false)
+  const [previewModalOpened, { open: openPreviewModal, close: closePreviewModal }] = useDisclosure()
+  const [isViewerFullscreen, { toggle: toggleViewerFullscreen }] = useDisclosure(false)
   const isMobile = useMediaQuery('(max-width: 768px)')
 
-  // 获取当前项目类型的特性选项
-  const availableFeatures = useMemo(() => {
-    return PROJECT_FEATURES[projectType] || []
-  }, [projectType])
+  // AbortController 引用
+  const abortControllerRef = React.useRef<AbortController | null>(null)
 
-  // 生成项目
+  // 构建文件树
+  const fileTree = useMemo(() => {
+    if (generatedFiles.length === 0) return []
+    return buildFileTree(generatedFiles)
+  }, [generatedFiles])
+
+  /**
+   * 通过 AI 生成项目
+   */
   const handleGenerate = useCallback(async () => {
     if (!projectName.trim() || !projectDescription.trim()) {
       setError('请填写项目名称和描述')
@@ -420,80 +520,118 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
     }
 
     setIsGenerating(true)
-    setProgress(0)
+    setGeneratedFiles([])
+    setSelectedFile(null)
     setError(null)
+    setStreamingText('')
+
+    // 创建 AbortController
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
     try {
-      // 模拟进度
-      const progressInterval = setInterval(() => {
-        setProgress((p) => Math.min(p + 10, 90))
-      }, 200)
+      // 获取模型实例
+      const globalSettings = settingsStore.getState().getSettings()
+      const lastUsedChatModel = lastUsedModelStore.getState().chat
 
-      const config: ProjectGenerationConfig = {
-        name: projectName,
-        type: projectType as ProjectGenerationConfig['type'],
-        description: projectDescription,
-        features: selectedFeatures,
-        outputPath: outputPath || `./${projectName}`,
+      const provider = lastUsedChatModel?.provider
+      const modelId = lastUsedChatModel?.modelId
+
+      if (!provider || !modelId) {
+        throw new Error('未配置模型，请先在设置中选择一个聊天模型')
       }
 
-      const project = generateProject(config)
+      const sessionSettings = getModelSettings(globalSettings, provider, modelId)
+      const { default: platform } = await import('@/platform')
+      const configs = await platform.getConfig()
+      const dependencies = await createModelDependencies()
+      const model = getModel(sessionSettings, globalSettings, configs, dependencies)
 
-      clearInterval(progressInterval)
-      setProgress(100)
-      setGeneratedProject(project)
+      // 构造消息
+      const systemPrompt = buildProjectSystemPrompt(
+        PROJECT_TYPE_CONFIG[projectType]?.description || projectType,
+        projectName
+      )
+
+      const messages: Message[] = [
+        {
+          id: 'system',
+          role: 'system',
+          contentParts: [{ type: 'text', text: systemPrompt }],
+          tokenCalculatedAt: {},
+        },
+        {
+          id: 'user',
+          role: 'user',
+          contentParts: [{ type: 'text', text: projectDescription }],
+          tokenCalculatedAt: {},
+        },
+      ]
+
+      // 调用 streamText 流式生成
+      const { result } = await streamText(model, {
+        messages,
+        onResultChangeWithCancel: (data) => {
+          if (data.cancel) {
+            abortControllerRef.current = {
+              abort: data.cancel,
+            } as AbortController
+          }
+          // 更新流式文本
+          const text = data.contentParts
+            ?.filter((p) => p.type === 'text')
+            .map((p) => p.text)
+            .join('') || ''
+          setStreamingText(text)
+        },
+      }, abortController.signal)
+
+      // 获取最终文本
+      const finalText = result.contentParts
+        ?.filter((p) => p.type === 'text')
+        .map((p) => p.text)
+        .join('') || ''
+
+      setStreamingText(finalText)
+
+      // 解析文件
+      const files = parseFilesFromResponse(finalText)
+      if (files.length === 0) {
+        setError('AI 未返回有效的项目文件，请尝试更详细的描述')
+      } else {
+        setGeneratedFiles(files)
+        // 自动选择第一个文件
+        setSelectedFile(files[0])
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '生成失败')
+      if (abortController.signal.aborted) {
+        // 用户取消，不显示错误
+      } else {
+        setError(err instanceof Error ? err.message : '生成失败')
+      }
     } finally {
       setIsGenerating(false)
+      abortControllerRef.current = null
     }
-  }, [projectName, projectDescription, projectType, selectedFeatures, outputPath])
+  }, [projectName, projectDescription, projectType])
 
-  // 保存项目
+  /**
+   * 停止生成
+   */
+  const handleStop = useCallback(() => {
+    abortControllerRef.current?.abort()
+    setIsGenerating(false)
+  }, [])
+
+  /**
+   * 保存项目
+   */
   const handleSave = useCallback(async () => {
-    if (!generatedProject) return
-
+    if (generatedFiles.length === 0) return
     // 这里应该调用 Electron 的 IPC 或文件系统 API 保存文件
-    console.log('保存项目到:', outputPath || `./${projectName}`)
-    console.log('文件列表:', generatedProject.files.map((f) => f.path))
-
-    // 模拟保存成功
+    console.log('保存项目文件:', generatedFiles.map((f) => f.path))
     alert('项目保存功能需要集成文件系统 API')
-  }, [generatedProject, outputPath, projectName])
-
-  // 分析需求
-  const handleAnalyze = useCallback(async () => {
-    if (!projectDescription.trim()) {
-      setError('请先输入项目描述')
-      return
-    }
-
-    setIsGenerating(true)
-    try {
-      const analysis = await analyzeProjectRequirements({ description: projectDescription })
-      if (analysis.analysis) {
-        setProjectType(analysis.analysis.recommendedType)
-        setSelectedFeatures(analysis.analysis.recommendedFeatures)
-      }
-    } catch (err) {
-      setError('分析失败')
-    } finally {
-      setIsGenerating(false)
-    }
-  }, [projectDescription])
-
-  // 切换特性选择
-  const toggleFeature = (feature: string) => {
-    setSelectedFeatures((prev) =>
-      prev.includes(feature) ? prev.filter((f) => f !== feature) : [...prev, feature]
-    )
-  }
-
-  // 构建文件树
-  const fileTree = useMemo(() => {
-    if (!generatedProject) return []
-    return buildFileTree(generatedProject.files)
-  }, [generatedProject])
+  }, [generatedFiles])
 
   return (
     <Stack gap="lg" className={className}>
@@ -504,13 +642,13 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
             <IconSparkles size={24} />
           </ThemeIcon>
           <Text fw={500} size="lg">
-            项目生成器
+            AI 项目生成器
           </Text>
         </Group>
 
-        {generatedProject && (
+        {generatedFiles.length > 0 && (
           <Badge size="lg" color="green" leftSection={<IconCheck size={14} />}>
-            已生成
+            已生成 {generatedFiles.length} 个文件
           </Badge>
         )}
       </Group>
@@ -546,17 +684,6 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
             required
           />
 
-          {/* 智能分析按钮 */}
-          <Button
-            variant="light"
-            leftSection={<IconSparkles size={16} />}
-            onClick={handleAnalyze}
-            loading={isGenerating}
-            disabled={!projectDescription.trim()}
-          >
-            智能分析推荐
-          </Button>
-
           <Divider />
 
           {/* 项目类型选择 */}
@@ -564,69 +691,98 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
             项目类型
           </Text>
           <Group gap="md">
-            {PROJECT_TYPES.map((type) => (
-              <ProjectTypeCard
-                key={type.id}
-                type={type.id}
-                isSelected={projectType === type.id}
-                onClick={() => setProjectType(type.id)}
-              />
-            ))}
+            {PROJECT_TYPES.map((type) => {
+              const config = PROJECT_TYPE_CONFIG[type.id]
+              const Icon = config.icon
+              const isSelected = projectType === type.id
+
+              return (
+                <Paper
+                  key={type.id}
+                  p="md"
+                  radius="md"
+                  withBorder
+                  style={{
+                    cursor: 'pointer',
+                    borderColor: isSelected ? `var(--mantine-color-${config.color}-6)` : undefined,
+                    backgroundColor: isSelected ? `var(--mantine-color-${config.color}-0)` : undefined,
+                    minWidth: 80,
+                  }}
+                  onClick={() => setProjectType(type.id)}
+                >
+                  <Stack align="center" gap="xs">
+                    <ThemeIcon size="xl" radius="md" color={config.color} variant={isSelected ? 'filled' : 'light'}>
+                      <Icon size={28} />
+                    </ThemeIcon>
+                    <Text fw={500} size="sm">
+                      {type.name}
+                    </Text>
+                  </Stack>
+                </Paper>
+              )
+            })}
           </Group>
 
-          {/* 特性选择 */}
-          {availableFeatures.length > 0 && (
-            <>
-              <Text size="sm" fw={500}>
-                功能特性
-              </Text>
-              <Group gap="sm">
-                {availableFeatures.map((feature) => (
-                  <Checkbox
-                    key={feature.label}
-                    label={feature.description}
-                    checked={selectedFeatures.includes(feature.label)}
-                    onChange={() => toggleFeature(feature.label)}
-                  />
-                ))}
-              </Group>
-            </>
-          )}
-
-          {/* 输出路径 */}
-          <TextInput
-            label="输出路径"
-            placeholder={`./${projectName || 'my-project'}`}
-            value={outputPath}
-            onChange={(e) => setOutputPath(e.currentTarget.value)}
-            description="留空将使用默认路径"
-          />
-
           {/* 生成按钮 */}
-          <Button
-            size="lg"
-            leftSection={<IconCode size={20} />}
-            onClick={handleGenerate}
-            loading={isGenerating}
-            disabled={!projectName.trim() || !projectDescription.trim()}
-          >
-            生成项目
-          </Button>
+          <Group gap="xs">
+            <Button
+              size="lg"
+              leftSection={<IconCode size={20} />}
+              onClick={handleGenerate}
+              loading={isGenerating}
+              disabled={!projectName.trim() || !projectDescription.trim()}
+              style={{ flex: 1 }}
+            >
+              AI 生成项目
+            </Button>
 
-          {/* 进度条 */}
+            {isGenerating && (
+              <Button
+                size="lg"
+                color="red"
+                variant="light"
+                leftSection={<IconSquare size={20} />}
+                onClick={handleStop}
+              >
+                停止
+              </Button>
+            )}
+          </Group>
+
+          {/* 生成进度 */}
           {isGenerating && (
             <Box>
-              <Text size="sm" c="dimmed" mb="xs">
-                正在生成项目...
-              </Text>
-              <Progress value={progress} animated />
+              <Group justify="space-between" mb="xs">
+                <Text size="sm" c="dimmed">
+                  AI 正在生成项目代码...
+                </Text>
+                <Loader size="xs" />
+              </Group>
+              <Progress animated value={33} />
             </Box>
           )}
         </Stack>
       </Paper>
 
+      {/* AI 流式输出预览（生成中） */}
+      {isGenerating && streamingText && (
+        <Paper p="md" radius="md" withBorder>
+          <Group justify="space-between" mb="xs">
+            <Text size="sm" fw={500}>AI 生成中...</Text>
+            <Badge size="sm" color="blue" variant="light">流式输出</Badge>
+          </Group>
+          <ScrollArea h={200}>
+            <Paper p="sm" bg="gray.0" radius="sm">
+              <Box style={{ fontSize: '13px' }}>
+                <Markdown message={{ contentParts: [{ type: 'text', text: streamingText }] } as any} />
+              </Box>
+            </Paper>
+          </ScrollArea>
+        </Paper>
+      )}
+
       {/* 生成结果展示 */}
-      {generatedProject && (
+      {generatedFiles.length > 0 && (
         <Paper p="md" radius="md" withBorder>
           <Stack gap="md">
             <Group justify="space-between">
@@ -653,69 +809,40 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
             {/* 项目统计 */}
             <Group gap="md">
               <Badge size="sm" variant="light">
-                {generatedProject.files.length} 个文件
+                {generatedFiles.length} 个文件
               </Badge>
               <Badge size="sm" variant="light" color="blue">
-                {PROJECT_TYPE_CONFIG[generatedProject.config.type].description}
+                {PROJECT_TYPE_CONFIG[projectType]?.description}
               </Badge>
             </Group>
 
-            {/* 项目结构 */}
-            <Box>
-              <Text size="sm" fw={500} mb="xs">
-                项目结构
-              </Text>
-              <Paper p="sm" bg="gray.0" radius="sm">
-                <Code block style={{ fontSize: '12px' }}>
-                  {generatedProject.structure}
-                </Code>
+            {/* 文件树 + 文件查看器 */}
+            <Flex gap="md" style={{ minHeight: 400 }} align="stretch">
+              {/* 文件树 */}
+              <Paper p="sm" style={{ width: 250, minWidth: 200, overflow: 'auto' }}>
+                <ScrollArea h={350}>
+                  <FileTree
+                    nodes={fileTree}
+                    onSelectFile={setSelectedFile}
+                    selectedFile={selectedFile?.path}
+                  />
+                </ScrollArea>
               </Paper>
-            </Box>
 
-            {/* 文件列表 */}
-            <Box>
-              <Text size="sm" fw={500} mb="xs">
-                文件列表
-              </Text>
-              <ScrollArea h={200}>
-                <FileTree
-                  nodes={fileTree}
-                  onSelectFile={setSelectedFile}
-                  selectedFile={selectedFile?.path}
+              {/* 文件查看器 */}
+              <Paper p="sm" style={{ flex: 1, overflow: 'auto' }}>
+                <FileViewer
+                  file={selectedFile}
+                  isFullscreen={isViewerFullscreen}
+                  onToggleFullscreen={toggleViewerFullscreen}
                 />
-              </ScrollArea>
-            </Box>
-
-            {/* 选中的文件预览 */}
-            {selectedFile && (
-              <Box>
-                <Group justify="space-between" mb="xs">
-                  <Text size="sm" fw={500}>
-                    {selectedFile.path}
-                  </Text>
-                  <Badge size="sm" variant="light">
-                    {selectedFile.language}
-                  </Badge>
-                </Group>
-                <Paper p="sm" bg="dark.9" radius="sm">
-                  <Code
-                    block
-                    style={{
-                      fontSize: '12px',
-                      maxHeight: 300,
-                      overflow: 'auto',
-                    }}
-                  >
-                    {selectedFile.content}
-                  </Code>
-                </Paper>
-              </Box>
-            )}
+              </Paper>
+            </Flex>
           </Stack>
         </Paper>
       )}
 
-      {/* 文件预览模态框 */}
+      {/* 文件预览模态框（全屏） */}
       <Modal
         opened={previewModalOpened}
         onClose={closePreviewModal}
@@ -723,107 +850,24 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
         size="xl"
         fullScreen={isMobile}
       >
-        {generatedProject && (
-          <Group align="stretch" gap="md" style={{ height: isMobile ? 'calc(100vh - 150px)' : 500 }}>
-            {/* 文件树 */}
-            <Paper p="sm" style={{ width: 250, overflow: 'auto' }}>
+        <Flex gap="md" style={{ height: isMobile ? 'calc(100vh - 150px)' : 500 }} align="stretch">
+          {/* 文件树 */}
+          <Paper p="sm" style={{ width: 250, overflow: 'auto' }}>
+            <ScrollArea h={isMobile ? '100%' : 450}>
               <FileTree
                 nodes={fileTree}
                 onSelectFile={setSelectedFile}
                 selectedFile={selectedFile?.path}
               />
-            </Paper>
+            </ScrollArea>
+          </Paper>
 
-            {/* 文件内容 */}
-            <Paper p="sm" style={{ flex: 1, overflow: 'auto' }}>
-              {selectedFile ? (
-                <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text fw={500}>{selectedFile.path}</Text>
-                    <Badge>{selectedFile.language}</Badge>
-                  </Group>
-                  <Code
-                    block
-                    style={{
-                      fontSize: '13px',
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {selectedFile.content}
-                  </Code>
-                </Stack>
-              ) : (
-                <Text c="dimmed" ta="center" style={{ marginTop: 100 }}>
-                  选择左侧文件查看内容
-                </Text>
-              )}
-            </Paper>
-          </Group>
-        )}
+          {/* 文件内容 */}
+          <Paper p="sm" style={{ flex: 1, overflow: 'auto' }}>
+            <FileViewer file={selectedFile} />
+          </Paper>
+        </Flex>
       </Modal>
-    </Stack>
-  )
-}
-
-/**
- * 项目生成器紧凑版组件
- * 用于在空间有限的地方展示
- */
-export function CompactProjectGenerator() {
-  const [projectName, setProjectName] = useState('')
-  const [projectType, setProjectType] = useState<string>('react')
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null)
-
-  const handleQuickGenerate = async () => {
-    if (!projectName.trim()) return
-
-    setIsGenerating(true)
-    try {
-      const config: ProjectGenerationConfig = {
-        name: projectName,
-        type: projectType as ProjectGenerationConfig['type'],
-        description: `Quick generated ${projectType} project`,
-        features: [],
-        outputPath: `./${projectName}`,
-      }
-
-      const project = generateProject(config)
-      setGeneratedProject(project)
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  return (
-    <Stack gap="md">
-      <Group gap="xs">
-        <TextInput
-          placeholder="项目名称"
-          value={projectName}
-          onChange={(e) => setProjectName(e.currentTarget.value)}
-          style={{ flex: 1 }}
-        />
-        <Select
-          value={projectType}
-          onChange={(value) => value && setProjectType(value)}
-          data={PROJECT_TYPES.map((t) => ({ value: t.id, label: t.name }))}
-          style={{ width: 120 }}
-        />
-        <Button
-          loading={isGenerating}
-          disabled={!projectName.trim()}
-          onClick={handleQuickGenerate}
-        >
-          生成
-        </Button>
-      </Group>
-
-      {generatedProject && (
-        <Alert color="green" icon={<IconCheck size={16} />}>
-          已生成 {generatedProject.files.length} 个文件
-        </Alert>
-      )}
     </Stack>
   )
 }

@@ -1,3 +1,20 @@
+/**
+ * agent.ts
+ * AI 智能体核心模块
+ *
+ * 接入万象Chat已有的模型系统，使用 getModel() + streamText() 调用真实 AI。
+ * 保留思考步骤可视化（从 AI 回复中提取 reasoningContent）。
+ * 支持工具调用的结果展示。
+ */
+
+import { getModel } from '@shared/models'
+import { getModelSettings } from '@shared/utils/model_settings'
+import type { ModelInterface, OnResultChange } from '@shared/models/types'
+import type { Message, SessionSettings, Settings, StreamTextResult } from '@shared/types'
+import { createModelDependencies } from '@/adapters'
+import { streamText } from '@/packages/model-calls'
+import { settingsStore } from '@/stores/settingsStore'
+import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import type {
   Tool,
   ToolCall,
@@ -10,18 +27,10 @@ import type {
   ToolContext,
 } from './types'
 
-import { searchTools } from './tools/web-search'
-import { githubTools } from './tools/github'
-import { projectGeneratorTools } from './tools/project-generator'
-
 /**
- * 默认智能体配置
+ * 默认智能体系统提示
  */
-const DEFAULT_CONFIG: AgentConfig = {
-  model: 'gpt-4',
-  temperature: 0.7,
-  maxTokens: 4000,
-  systemPrompt: `你是一个智能 AI 助手，可以帮助用户完成各种任务。你可以使用多种工具来获取信息、执行操作和生成内容。
+const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户完成各种任务。你可以使用多种工具来获取信息、执行操作和生成内容。
 
 当你需要获取最新信息时，使用网络搜索工具。
 当你需要查看代码示例或开源项目时，使用 GitHub 工具。
@@ -33,7 +42,16 @@ const DEFAULT_CONFIG: AgentConfig = {
 3. 行动：选择合适的工具执行
 4. 结果：根据工具返回的结果给出最终回答
 
-始终保持友好、专业的态度，并提供准确、有用的信息。`,
+始终保持友好、专业的态度，并提供准确、有用的信息。`
+
+/**
+ * 默认智能体配置
+ */
+const DEFAULT_CONFIG: AgentConfig = {
+  model: '',
+  temperature: 0.7,
+  maxTokens: 4000,
+  systemPrompt: DEFAULT_SYSTEM_PROMPT,
   enabledTools: [
     'web_search',
     'fetch_webpage',
@@ -50,188 +68,24 @@ const DEFAULT_CONFIG: AgentConfig = {
 }
 
 /**
- * 工具注册表
+ * 生成唯一 ID
  */
-class ToolRegistry {
-  private tools: Map<string, Tool> = new Map()
-
-  constructor() {
-    // 注册所有工具
-    this.registerTools([...searchTools, ...githubTools, ...projectGeneratorTools])
-  }
-
-  register(tool: Tool): void {
-    this.tools.set(tool.name, tool)
-  }
-
-  registerTools(tools: Tool[]): void {
-    tools.forEach((tool) => this.register(tool))
-  }
-
-  get(name: string): Tool | undefined {
-    return this.tools.get(name)
-  }
-
-  getAll(): Tool[] {
-    return Array.from(this.tools.values())
-  }
-
-  getEnabled(enabledTools: string[]): Tool[] {
-    return enabledTools
-      .map((name) => this.tools.get(name))
-      .filter((tool): tool is Tool => tool !== undefined)
-  }
-}
-
-/**
- * 工具执行器
- */
-class ToolExecutor {
-  private registry: ToolRegistry
-
-  constructor(registry: ToolRegistry) {
-    this.registry = registry
-  }
-
-  async execute(
-    toolName: string,
-    parameters: Record<string, any>,
-    context: ToolContext
-  ): Promise<any> {
-    const tool = this.registry.get(toolName)
-
-    if (!tool) {
-      throw new Error(`工具不存在: ${toolName}`)
-    }
-
-    // 验证必需参数
-    const missingParams = tool.parameters
-      .filter((p) => p.required && !(p.name in parameters))
-      .map((p) => p.name)
-
-    if (missingParams.length > 0) {
-      throw new Error(`缺少必需参数: ${missingParams.join(', ')}`)
-    }
-
-    // 执行工具
-    try {
-      const result = await tool.execute(parameters)
-      return result
-    } catch (error) {
-      throw new Error(
-        `工具执行失败 (${toolName}): ${error instanceof Error ? error.message : '未知错误'}`
-      )
-    }
-  }
-
-  async executeMultiple(
-    toolCalls: ToolCall[],
-    context: ToolContext
-  ): Promise<ToolCall[]> {
-    const results: ToolCall[] = []
-
-    for (const toolCall of toolCalls) {
-      try {
-        const result = await this.execute(toolCall.tool, toolCall.parameters, context)
-        results.push({
-          ...toolCall,
-          result,
-        })
-      } catch (error) {
-        results.push({
-          ...toolCall,
-          error: error instanceof Error ? error.message : '执行失败',
-        })
-      }
-    }
-
-    return results
-  }
-}
-
-/**
- * 思考流程管理器
- */
-class ThoughtProcessManager {
-  private steps: ThoughtStep[] = []
-  private sessionId: string
-
-  constructor(sessionId: string) {
-    this.sessionId = sessionId
-  }
-
-  addObservation(content: string): ThoughtStep {
-    const step: ThoughtStep = {
-      id: this.generateId(),
-      type: 'observation',
-      content,
-      timestamp: Date.now(),
-    }
-    this.steps.push(step)
-    return step
-  }
-
-  addThought(content: string): ThoughtStep {
-    const step: ThoughtStep = {
-      id: this.generateId(),
-      type: 'thought',
-      content,
-      timestamp: Date.now(),
-    }
-    this.steps.push(step)
-    return step
-  }
-
-  addAction(content: string, toolCall: ToolCall): ThoughtStep {
-    const step: ThoughtStep = {
-      id: this.generateId(),
-      type: 'action',
-      content,
-      timestamp: Date.now(),
-      toolCall,
-    }
-    this.steps.push(step)
-    return step
-  }
-
-  addResult(content: string, toolCall?: ToolCall): ThoughtStep {
-    const step: ThoughtStep = {
-      id: this.generateId(),
-      type: 'result',
-      content,
-      timestamp: Date.now(),
-      toolCall,
-    }
-    this.steps.push(step)
-    return step
-  }
-
-  getSteps(): ThoughtStep[] {
-    return [...this.steps]
-  }
-
-  clear(): void {
-    this.steps = []
-  }
-
-  private generateId(): string {
-    return `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-  }
+function generateId(prefix: string = 'id'): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
 
 /**
  * AI 智能体核心类
+ *
+ * 使用万象Chat的模型系统进行真实的 AI 调用，
+ * 支持流式输出、思考步骤提取和工具调用展示。
  */
 export class Agent {
   private config: AgentConfig
-  private registry: ToolRegistry
-  private executor: ToolExecutor
   private sessions: Map<string, AgentSession> = new Map()
 
   constructor(config: Partial<AgentConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
-    this.registry = new ToolRegistry()
-    this.executor = new ToolExecutor(this.registry)
   }
 
   /**
@@ -275,18 +129,103 @@ export class Agent {
   }
 
   /**
-   * 发送消息并获取响应
+   * 创建模型实例
+   * 使用万象Chat的 getModel() + settingsStore + lastUsedModelStore
+   */
+  private async createModelInstance(): Promise<ModelInterface> {
+    const globalSettings = settingsStore.getState().getSettings()
+    const lastUsedChatModel = lastUsedModelStore.getState().chat
+
+    // 确定使用的模型
+    const provider = this.config.model
+      ? this.config.model.split('/')[0] || lastUsedChatModel?.provider
+      : lastUsedChatModel?.provider
+
+    const modelId = this.config.model
+      ? this.config.model.split('/').slice(1).join('/') || lastUsedChatModel?.modelId
+      : lastUsedChatModel?.modelId
+
+    if (!provider || !modelId) {
+      throw new Error('未配置模型，请先在设置中选择一个聊天模型')
+    }
+
+    // 构建 SessionSettings
+    const sessionSettings = getModelSettings(globalSettings, provider, modelId)
+
+    // 获取平台配置
+    const { default: platform } = await import('@/platform')
+    const configs = await platform.getConfig()
+
+    // 创建模型依赖
+    const dependencies = await createModelDependencies()
+
+    // 创建模型实例
+    const model = getModel(sessionSettings, globalSettings, configs, dependencies)
+    return model
+  }
+
+  /**
+   * 将 AgentMessage 转换为万象Chat的 Message 格式
+   */
+  private convertToMessages(agentMessages: AgentMessage[]): Message[] {
+    return agentMessages.map((msg) => ({
+      id: generateId('msg'),
+      role: msg.role as 'system' | 'user' | 'assistant' | 'tool',
+      contentParts: [{ type: 'text' as const, text: msg.content }],
+      tokenCalculatedAt: {},
+    }))
+  }
+
+  /**
+   * 从 StreamTextResult 中提取思考步骤
+   */
+  private extractThoughtSteps(result: StreamTextResult): ThoughtStep[] {
+    const steps: ThoughtStep[] = []
+
+    // 从 contentParts 中提取 reasoning 内容
+    if (result.contentParts) {
+      for (const part of result.contentParts) {
+        if (part.type === 'reasoning') {
+          steps.push({
+            id: generateId('thought'),
+            type: 'thought',
+            content: part.text || '',
+            timestamp: Date.now(),
+          })
+        }
+        // 提取工具调用作为行动步骤
+        if (part.type === 'tool-call') {
+          steps.push({
+            id: generateId('action'),
+            type: 'action',
+            content: `调用工具: ${part.toolName}`,
+            timestamp: Date.now(),
+            toolCall: {
+              tool: part.toolName,
+              parameters: (part.args as Record<string, any>) || {},
+              result: part.state === 'result' ? part.result : undefined,
+              error: part.state === 'error' ? String(part.result) : undefined,
+            },
+          })
+        }
+      }
+    }
+
+    return steps
+  }
+
+  /**
+   * 发送消息并获取响应（非流式）
    */
   async sendMessage(
     sessionId: string,
     content: string,
     options: {
-      enableTools?: boolean
-      stream?: boolean
+      signal?: AbortSignal
     } = {}
   ): Promise<AgentResponse> {
     const session = this.getOrCreateSession(sessionId)
-    const thoughtManager = new ThoughtProcessManager(sessionId)
+    const thoughtSteps: ThoughtStep[] = []
 
     // 添加用户消息
     const userMessage: AgentMessage = {
@@ -296,365 +235,395 @@ export class Agent {
     }
     session.messages.push(userMessage)
 
-    // 记录观察
-    thoughtManager.addObservation(`用户输入: ${content}`)
-
-    // 分析是否需要使用工具
-    const toolCalls = options.enableTools !== false
-      ? await this.analyzeToolNeeds(content, session)
-      : []
-
-    // 执行工具调用
-    let toolResults: ToolCall[] = []
-    if (toolCalls.length > 0) {
-      for (const toolCall of toolCalls) {
-        thoughtManager.addAction(
-          `调用工具: ${toolCall.tool}`,
-          toolCall
-        )
-      }
-
-      const context: ToolContext = {
-        sessionId,
-        messageHistory: session.messages,
-      }
-
-      toolResults = await this.executor.executeMultiple(toolCalls, context)
-
-      // 记录工具结果
-      for (const result of toolResults) {
-        if (result.error) {
-          thoughtManager.addResult(
-            `工具执行失败: ${result.error}`,
-            result
-          )
-        } else {
-          thoughtManager.addResult(
-            `工具执行成功: ${JSON.stringify(result.result).substring(0, 200)}...`,
-            result
-          )
-        }
-      }
-    }
-
-    // 生成响应
-    const response = await this.generateResponse(
-      session,
-      toolResults,
-      thoughtManager
-    )
-
-    // 更新会话
-    session.messages.push({
-      role: 'assistant',
-      content: response.content,
-      toolCalls: toolResults,
+    // 记录观察步骤
+    thoughtSteps.push({
+      id: generateId('thought'),
+      type: 'observation',
+      content: `用户输入: ${content}`,
       timestamp: Date.now(),
     })
-    session.thoughtSteps = thoughtManager.getSteps()
-    session.updatedAt = Date.now()
 
-    return {
-      content: response.content,
-      toolCalls: toolResults,
-      thoughtSteps: thoughtManager.getSteps(),
+    try {
+      // 创建模型实例
+      const model = await this.createModelInstance()
+
+      // 构造消息列表（排除 system 消息，streamText 会自行处理）
+      const chatMessages = this.convertToMessages(session.messages)
+
+      // 调用 streamText 进行流式生成
+      let fullResult: StreamTextResult = { contentParts: [] }
+
+      const { result } = await streamText(model, {
+        messages: chatMessages,
+        onResultChangeWithCancel: (data) => {
+          // 收集完整结果
+          if (data.contentParts) {
+            fullResult = {
+              ...fullResult,
+              ...data,
+              contentParts: data.contentParts,
+            }
+          }
+        },
+      }, options.signal)
+
+      fullResult = result
+
+      // 提取回复文本
+      const responseContent = fullResult.contentParts
+        ?.filter((p) => p.type === 'text')
+        .map((p) => p.text)
+        .join('') || ''
+
+      // 提取思考步骤
+      const extractedSteps = this.extractThoughtSteps(fullResult)
+      thoughtSteps.push(...extractedSteps)
+
+      // 提取工具调用
+      const toolCalls: ToolCall[] = []
+      if (fullResult.contentParts) {
+        for (const part of fullResult.contentParts) {
+          if (part.type === 'tool-call') {
+            toolCalls.push({
+              tool: part.toolName,
+              parameters: (part.args as Record<string, any>) || {},
+              result: part.state === 'result' ? part.result : undefined,
+              error: part.state === 'error' ? String(part.result) : undefined,
+            })
+          }
+        }
+      }
+
+      // 添加结果步骤
+      if (toolCalls.length > 0) {
+        thoughtSteps.push({
+          id: generateId('thought'),
+          type: 'result',
+          content: `工具调用完成，共 ${toolCalls.length} 次调用`,
+          timestamp: Date.now(),
+        })
+      }
+
+      // 添加 AI 回复到会话
+      const assistantMessage: AgentMessage = {
+        role: 'assistant',
+        content: responseContent,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        timestamp: Date.now(),
+      }
+      session.messages.push(assistantMessage)
+      session.thoughtSteps = thoughtSteps
+      session.updatedAt = Date.now()
+
+      return {
+        content: responseContent,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        thoughtSteps,
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : '未知错误'
+
+      // 添加错误步骤
+      thoughtSteps.push({
+        id: generateId('thought'),
+        type: 'result',
+        content: `执行失败: ${errorMsg}`,
+        timestamp: Date.now(),
+      })
+
+      session.thoughtSteps = thoughtSteps
+      session.updatedAt = Date.now()
+
+      return {
+        content: '',
+        thoughtSteps,
+        error: errorMsg,
+      }
     }
   }
 
   /**
    * 流式发送消息
+   *
+   * 返回 AsyncGenerator，逐步产出：
+   * - thought: 思考步骤
+   * - text: 文本内容片段
+   * - tool_call: 工具调用信息
+   * - reasoning: 推理/思考内容
+   * - error: 错误信息
+   * - done: 完成
    */
   async *sendMessageStream(
     sessionId: string,
     content: string,
     options: {
-      enableTools?: boolean
+      signal?: AbortSignal
     } = {}
   ): AsyncGenerator<StreamChunk> {
     const session = this.getOrCreateSession(sessionId)
-    const thoughtManager = new ThoughtProcessManager(sessionId)
+    const thoughtSteps: ThoughtStep[] = []
 
     // 添加用户消息
-    session.messages.push({
+    const userMessage: AgentMessage = {
       role: 'user',
       content,
       timestamp: Date.now(),
-    })
+    }
+    session.messages.push(userMessage)
 
-    // 发送思考步骤
+    // 发送观察步骤
+    const observationStep: ThoughtStep = {
+      id: generateId('thought'),
+      type: 'observation',
+      content: `用户输入: ${content}`,
+      timestamp: Date.now(),
+    }
+    thoughtSteps.push(observationStep)
     yield {
       type: 'thought',
-      thoughtStep: thoughtManager.addObservation(`用户输入: ${content}`),
+      thoughtStep: observationStep,
     }
 
-    // 分析工具需求
-    const toolCalls = options.enableTools !== false
-      ? await this.analyzeToolNeeds(content, session)
-      : []
+    try {
+      // 创建模型实例
+      const model = await this.createModelInstance()
 
-    // 执行工具
-    let toolResults: ToolCall[] = []
-    if (toolCalls.length > 0) {
-      for (const toolCall of toolCalls) {
-        yield {
-          type: 'thought',
-          thoughtStep: thoughtManager.addAction(
-            `调用工具: ${toolCall.tool}`,
-            toolCall
-          ),
-        }
+      // 发送思考步骤：正在分析
+      const analyzingStep: ThoughtStep = {
+        id: generateId('thought'),
+        type: 'thought',
+        content: '正在分析用户需求...',
+        timestamp: Date.now(),
       }
-
-      const context: ToolContext = {
-        sessionId,
-        messageHistory: session.messages,
-      }
-
-      toolResults = await this.executor.executeMultiple(toolCalls, context)
-
-      for (const result of toolResults) {
-        yield {
-          type: 'tool_call',
-          toolCall: result,
-          thoughtStep: thoughtManager.addResult(
-            result.error
-              ? `工具执行失败: ${result.error}`
-              : `工具执行成功`,
-            result
-          ),
-        }
-      }
-    }
-
-    // 生成流式响应
-    const response = await this.generateResponse(
-      session,
-      toolResults,
-      thoughtManager
-    )
-
-    // 模拟流式输出
-    const words = response.content.split(' ')
-    let currentContent = ''
-
-    for (const word of words) {
-      currentContent += word + ' '
+      thoughtSteps.push(analyzingStep)
       yield {
-        type: 'text',
-        content: word + ' ',
+        type: 'thought',
+        thoughtStep: analyzingStep,
       }
-      // 模拟延迟
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
 
-    // 更新会话
-    session.messages.push({
-      role: 'assistant',
-      content: response.content,
-      toolCalls: toolResults,
-      timestamp: Date.now(),
-    })
-    session.thoughtSteps = thoughtManager.getSteps()
-    session.updatedAt = Date.now()
+      // 构造消息列表
+      const chatMessages = this.convertToMessages(session.messages)
 
-    yield { type: 'done' }
-  }
+      // 用于收集完整回复
+      let fullContent = ''
+      const toolCalls: ToolCall[] = []
+      let cancelFn: (() => void) | undefined
 
-  /**
-   * 分析是否需要使用工具
-   */
-  private async analyzeToolNeeds(
-    content: string,
-    session: AgentSession
-  ): Promise<ToolCall[]> {
-    const toolCalls: ToolCall[] = []
-    const lowerContent = content.toLowerCase()
-
-    // 简单的关键词匹配来决定使用哪些工具
-    // 实际应用中应该使用 LLM 来判断
-
-    // 搜索相关
-    if (
-      lowerContent.includes('搜索') ||
-      lowerContent.includes('查找') ||
-      lowerContent.includes('最新') ||
-      lowerContent.includes('新闻') ||
-      lowerContent.includes('查询')
-    ) {
-      // 提取搜索关键词
-      const keywords = this.extractKeywords(content)
-      if (keywords) {
-        toolCalls.push({
-          tool: 'web_search',
-          parameters: { query: keywords, numResults: 5 },
-        })
-      }
-    }
-
-    // GitHub 相关
-    if (
-      lowerContent.includes('github') ||
-      lowerContent.includes('开源') ||
-      lowerContent.includes('代码库') ||
-      lowerContent.includes('仓库')
-    ) {
-      // 尝试提取仓库信息
-      const repoMatch = content.match(/([\w-]+)\/([\w-]+)/)
-      if (repoMatch) {
-        const [, owner, repo] = repoMatch
-        toolCalls.push({
-          tool: 'github_get_repo',
-          parameters: { owner, repo },
-        })
-      } else {
-        // 搜索仓库
-        const keywords = this.extractKeywords(content)
-        if (keywords) {
-          toolCalls.push({
-            tool: 'github_search_repos',
-            parameters: { query: keywords, perPage: 5 },
-          })
-        }
-      }
-    }
-
-    // 项目生成相关
-    if (
-      lowerContent.includes('创建项目') ||
-      lowerContent.includes('生成项目') ||
-      lowerContent.includes('新建项目') ||
-      lowerContent.includes('脚手架')
-    ) {
-      // 分析项目需求
-      toolCalls.push({
-        tool: 'analyze_project_requirements',
-        parameters: { description: content },
-      })
-    }
-
-    return toolCalls
-  }
-
-  /**
-   * 生成响应
-   */
-  private async generateResponse(
-    session: AgentSession,
-    toolResults: ToolCall[],
-    thoughtManager: ThoughtProcessManager
-  ): Promise<{ content: string }> {
-    // 构建上下文
-    const context = this.buildContext(session, toolResults)
-
-    // 添加思考步骤
-    thoughtManager.addThought('分析工具结果并生成响应')
-
-    // 这里应该调用实际的 LLM API
-    // 简化实现：根据工具结果生成响应
-    let response = ''
-
-    if (toolResults.length === 0) {
-      // 没有工具调用，直接回答
-      response = `我理解了你的问题。${session.messages[session.messages.length - 1]?.content}
-
-作为 AI 助手，我可以帮助你：
-- 搜索网络获取最新信息
-- 查找 GitHub 上的开源项目
-- 生成各种类型的项目脚手架
-
-请问有什么具体需要我帮忙的吗？`
-    } else {
-      // 根据工具结果生成响应
-      const successfulResults = toolResults.filter((r) => !r.error)
-      const failedResults = toolResults.filter((r) => r.error)
-
-      if (successfulResults.length > 0) {
-        response = '根据查询结果，我为你找到了以下信息：\n\n'
-
-        for (const result of successfulResults) {
-          if (result.tool === 'web_search' && result.result) {
-            const searchResults = result.result.results || []
-            response += '**搜索结果：**\n'
-            for (const item of searchResults.slice(0, 3)) {
-              response += `- ${item.title}: ${item.snippet}\n`
+      // 调用 streamText 进行流式生成
+      const { result } = await streamText(
+        model,
+        {
+          messages: chatMessages,
+          onResultChangeWithCancel: (data) => {
+            // 保存取消函数
+            if (data.cancel) {
+              cancelFn = data.cancel
             }
-            response += '\n'
-          } else if (result.tool.startsWith('github_') && result.result) {
-            if (result.result.repositories) {
-              response += '**GitHub 仓库：**\n'
-              for (const repo of result.result.repositories.slice(0, 3)) {
-                response += `- ${repo.fullName}: ${repo.description} (⭐ ${repo.stars})\n`
+
+            if (data.contentParts) {
+              // 提取文本增量
+              const textParts = data.contentParts.filter((p) => p.type === 'text')
+              const newText = textParts.map((p) => p.text).join('')
+
+              // 只发送新增的文本
+              if (newText.length > fullContent.length) {
+                const delta = newText.substring(fullContent.length)
+                fullContent = newText
+                // 注意：这里不能直接 yield，因为回调不是 generator
+                // 我们会在下面的处理中通过 result 获取完整内容
               }
-            } else if (result.result.fullName) {
-              response += `**仓库信息：**\n- ${result.result.fullName}: ${result.result.description}\n- ⭐ ${result.result.stars} | 🍴 ${result.result.forks}\n`
+
+              // 提取推理内容
+              const reasoningParts = data.contentParts.filter((p) => p.type === 'reasoning')
+              for (const rp of reasoningParts) {
+                if (rp.text) {
+                  // 推理内容通过 thought 类型发送
+                }
+              }
+
+              // 提取工具调用
+              const toolCallParts = data.contentParts.filter((p) => p.type === 'tool-call')
+              for (const tc of toolCallParts) {
+                if (tc.state === 'call') {
+                  // 新的工具调用
+                }
+              }
             }
-            response += '\n'
-          } else if (result.tool === 'analyze_project_requirements' && result.result) {
-            const analysis = result.result.analysis
-            response += `**项目分析：**\n- 推荐类型: ${analysis.recommendedType}\n- 推荐特性: ${analysis.recommendedFeatures.join(', ') || '基础功能'}\n- 置信度: ${analysis.confidence}\n\n${result.result.suggestion}\n\n`
+          },
+        },
+        options.signal
+      )
+
+      // 从最终结果中提取内容并发送
+      const finalText = result.contentParts
+        ?.filter((p) => p.type === 'text')
+        .map((p) => p.text)
+        .join('') || ''
+
+      // 发送推理/思考内容
+      const reasoningParts = result.contentParts?.filter((p) => p.type === 'reasoning') || []
+      for (const rp of reasoningParts) {
+        if (rp.text) {
+          const reasoningStep: ThoughtStep = {
+            id: generateId('thought'),
+            type: 'thought',
+            content: rp.text,
+            timestamp: Date.now(),
+          }
+          thoughtSteps.push(reasoningStep)
+          yield {
+            type: 'reasoning',
+            content: rp.text,
+            thoughtStep: reasoningStep,
           }
         }
       }
 
-      if (failedResults.length > 0) {
-        response += '\n**注意：** 部分工具执行失败，可能会影响回答的完整性。\n'
-      }
-    }
+      // 发送工具调用信息
+      const toolCallParts = result.contentParts?.filter((p) => p.type === 'tool-call') || []
+      for (const tc of toolCallParts) {
+        const toolCall: ToolCall = {
+          tool: tc.toolName,
+          parameters: (tc.args as Record<string, any>) || {},
+          result: tc.state === 'result' ? tc.result : undefined,
+          error: tc.state === 'error' ? String(tc.result) : undefined,
+        }
+        toolCalls.push(toolCall)
 
-    return { content: response }
-  }
+        const actionStep: ThoughtStep = {
+          id: generateId('thought'),
+          type: 'action',
+          content: `调用工具: ${tc.toolName}`,
+          timestamp: Date.now(),
+          toolCall,
+        }
+        thoughtSteps.push(actionStep)
+        yield {
+          type: 'tool_call',
+          toolCall,
+          thoughtStep: actionStep,
+        }
 
-  /**
-   * 构建上下文
-   */
-  private buildContext(
-    session: AgentSession,
-    toolResults: ToolCall[]
-  ): string {
-    const recentMessages = session.messages.slice(-5)
-    let context = '最近对话:\n'
-
-    for (const msg of recentMessages) {
-      context += `${msg.role}: ${msg.content}\n`
-    }
-
-    if (toolResults.length > 0) {
-      context += '\n工具执行结果:\n'
-      for (const result of toolResults) {
-        if (result.result) {
-          context += `${result.tool}: ${JSON.stringify(result.result).substring(0, 500)}\n`
+        // 如果有结果，也发送结果步骤
+        if (tc.state === 'result' || tc.state === 'error') {
+          const resultStep: ThoughtStep = {
+            id: generateId('thought'),
+            type: 'result',
+            content: tc.state === 'error'
+              ? `工具执行失败: ${String(tc.result)}`
+              : `工具执行成功`,
+            timestamp: Date.now(),
+            toolCall,
+          }
+          thoughtSteps.push(resultStep)
         }
       }
-    }
 
-    return context
+      // 发送最终文本内容（模拟流式输出效果）
+      if (finalText) {
+        // 按段落分块发送
+        const chunks = this.splitTextIntoChunks(finalText)
+        for (const chunk of chunks) {
+          yield {
+            type: 'text',
+            content: chunk,
+          }
+        }
+      }
+
+      // 添加结果步骤
+      if (toolCalls.length > 0) {
+        const resultStep: ThoughtStep = {
+          id: generateId('thought'),
+          type: 'result',
+          content: `工具调用完成，共 ${toolCalls.length} 次调用`,
+          timestamp: Date.now(),
+        }
+        thoughtSteps.push(resultStep)
+      }
+
+      // 更新会话
+      const assistantMessage: AgentMessage = {
+        role: 'assistant',
+        content: finalText,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        timestamp: Date.now(),
+      }
+      session.messages.push(assistantMessage)
+      session.thoughtSteps = thoughtSteps
+      session.updatedAt = Date.now()
+
+      yield { type: 'done' }
+    } catch (error) {
+      // 检查是否是取消操作
+      if (options.signal?.aborted) {
+        yield { type: 'done' }
+        return
+      }
+
+      const errorMsg = error instanceof Error ? error.message : '未知错误'
+
+      const errorStep: ThoughtStep = {
+        id: generateId('thought'),
+        type: 'result',
+        content: `执行失败: ${errorMsg}`,
+        timestamp: Date.now(),
+      }
+      thoughtSteps.push(errorStep)
+
+      session.thoughtSteps = thoughtSteps
+      session.updatedAt = Date.now()
+
+      yield {
+        type: 'error',
+        error: errorMsg,
+      }
+    }
   }
 
   /**
-   * 提取关键词
+   * 将文本分割成适合流式输出的块
    */
-  private extractKeywords(content: string): string {
-    // 简单的关键词提取
-    // 移除常见的疑问词和助词
-    const stopWords = [
-      '请', '帮我', '给我', '我想', '需要', '想要', '知道', '了解',
-      '搜索', '查找', '查询', '最新', '关于', '一下', '什么', '怎么',
-      '如何', '为什么', '吗', '呢', '吧', '啊',
-    ]
-
-    let keywords = content
-    for (const word of stopWords) {
-      keywords = keywords.replace(new RegExp(word, 'g'), '')
+  private splitTextIntoChunks(text: string, chunkSize: number = 20): string[] {
+    const chunks: string[] = []
+    for (let i = 0; i < text.length; i += chunkSize) {
+      chunks.push(text.substring(i, i + chunkSize))
     }
-
-    return keywords.trim() || content
+    return chunks
   }
 
   /**
    * 获取可用工具列表
    */
   getAvailableTools(): Tool[] {
-    return this.registry.getEnabled(this.config.enabledTools)
+    // 工具列表由万象Chat的模型系统内部管理
+    // 这里返回配置中启用的工具名称列表对应的描述
+    return this.config.enabledTools.map((name) => ({
+      name,
+      description: this.getToolDescription(name),
+      parameters: [],
+      execute: async () => null,
+    }))
+  }
+
+  /**
+   * 获取工具描述
+   */
+  private getToolDescription(toolName: string): string {
+    const descriptions: Record<string, string> = {
+      web_search: '网络搜索：搜索互联网获取最新信息',
+      fetch_webpage: '获取网页：获取特定网页的内容',
+      search_and_summarize: '搜索并总结：搜索信息并生成摘要',
+      github_search_repos: 'GitHub 搜索仓库：搜索 GitHub 上的开源仓库',
+      github_get_file: 'GitHub 获取文件：获取 GitHub 仓库中的文件内容',
+      github_get_repo: 'GitHub 获取仓库：获取 GitHub 仓库的详细信息',
+      github_list_dir: 'GitHub 列出目录：列出 GitHub 仓库中的目录内容',
+      github_get_readme: 'GitHub 获取 README：获取仓库的 README 文件',
+      github_search_code: 'GitHub 搜索代码：在 GitHub 上搜索代码',
+      generate_project: '生成项目：根据描述生成项目脚手架',
+      analyze_project_requirements: '分析项目需求：分析项目需求并推荐技术方案',
+    }
+    return descriptions[toolName] || toolName
   }
 
   /**

@@ -1,3 +1,11 @@
+/**
+ * store.ts
+ * AI 智能体状态管理
+ *
+ * 使用 Zustand 管理智能体的会话状态、消息、思考步骤和流式输出。
+ * 接入万象Chat的模型系统，支持真实 AI 调用和流式回复。
+ */
+
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
@@ -16,6 +24,7 @@ interface SessionState {
   sessions: AgentSession[]
   currentSessionId: string | null
   isLoading: boolean
+  isStreaming: boolean
   error: string | null
 }
 
@@ -29,6 +38,16 @@ interface AgentState extends SessionState {
   // Agent 实例
   agent: Agent
 
+  // 当前流式消息内容（用于实时显示）
+  streamingContent: string
+  // 当前流式推理内容
+  streamingReasoning: string
+  // 当前流式工具调用
+  streamingToolCalls: ToolCall[]
+
+  // 取消控制器
+  abortController: AbortController | null
+
   // 会话操作
   createSession: () => string
   selectSession: (sessionId: string) => void
@@ -37,13 +56,7 @@ interface AgentState extends SessionState {
 
   // 消息操作
   sendMessage: (content: string) => Promise<void>
-  sendMessageStream: (content: string) => AsyncGenerator<
-    { type: 'text'; content: string } |
-    { type: 'thought'; step: ThoughtStep } |
-    { type: 'tool'; call: ToolCall } |
-    { type: 'error'; error: string } |
-    { type: 'done' }
-  >
+  stopGeneration: () => void
   clearMessages: (sessionId?: string) => void
 
   // 思考步骤操作
@@ -60,14 +73,23 @@ interface AgentState extends SessionState {
 
   // 加载状态
   setLoading: (loading: boolean) => void
+  setStreaming: (streaming: boolean) => void
   setError: (error: string | null) => void
+
+  // 流式内容更新
+  appendStreamingContent: (content: string) => void
+  setStreamingContent: (content: string) => void
+  appendStreamingReasoning: (content: string) => void
+  setStreamingReasoning: (content: string) => void
+  addStreamingToolCall: (toolCall: ToolCall) => void
+  clearStreamingState: () => void
 }
 
 /**
  * 默认配置
  */
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
-  model: 'gpt-4',
+  model: '',
   temperature: 0.7,
   maxTokens: 4000,
   systemPrompt: `你是一个智能 AI 助手，可以帮助用户完成各种任务。
@@ -103,9 +125,16 @@ export const useAgentStore = create<AgentState>()(
       sessions: [],
       currentSessionId: null,
       isLoading: false,
+      isStreaming: false,
       error: null,
       config: DEFAULT_AGENT_CONFIG,
       agent: createAgent(DEFAULT_AGENT_CONFIG),
+
+      // 流式状态
+      streamingContent: '',
+      streamingReasoning: '',
+      streamingToolCalls: [],
+      abortController: null,
 
       // ========== 会话操作 ==========
 
@@ -119,6 +148,9 @@ export const useAgentStore = create<AgentState>()(
         set((state) => ({
           sessions: [...state.sessions, session],
           currentSessionId: session.id,
+          streamingContent: '',
+          streamingReasoning: '',
+          streamingToolCalls: [],
         }))
 
         return session.id
@@ -177,13 +209,16 @@ export const useAgentStore = create<AgentState>()(
         set({
           sessions: [],
           currentSessionId: null,
+          streamingContent: '',
+          streamingReasoning: '',
+          streamingToolCalls: [],
         })
       },
 
       // ========== 消息操作 ==========
 
       /**
-       * 发送消息
+       * 发送消息（非流式）
        */
       sendMessage: async (content: string) => {
         const state = get()
@@ -194,12 +229,10 @@ export const useAgentStore = create<AgentState>()(
           sessionId = get().createSession()
         }
 
-        set({ isLoading: true, error: null })
+        set({ isLoading: true, isStreaming: false, error: null })
 
         try {
-          const response = await state.agent.sendMessage(sessionId, content, {
-            enableTools: true,
-          })
+          const response = await state.agent.sendMessage(sessionId, content)
 
           // 更新会话状态
           const updatedSession = state.agent.getSession(sessionId)
@@ -220,69 +253,17 @@ export const useAgentStore = create<AgentState>()(
       },
 
       /**
-       * 流式发送消息
+       * 停止生成
        */
-      sendMessageStream: async function* (content: string) {
-        const state = get()
-
-        // 确保有当前会话
-        let sessionId = state.currentSessionId
-        if (!sessionId) {
-          sessionId = get().createSession()
-        }
-
-        set({ isLoading: true, error: null })
-
-        try {
-          const stream = state.agent.sendMessageStream(sessionId, content, {
-            enableTools: true,
+      stopGeneration: () => {
+        const { abortController } = get()
+        if (abortController) {
+          abortController.abort()
+          set({
+            abortController: null,
+            isStreaming: false,
+            isLoading: false,
           })
-
-          let fullContent = ''
-
-          for await (const chunk of stream) {
-            switch (chunk.type) {
-              case 'text':
-                fullContent += chunk.content || ''
-                yield { type: 'text' as const, content: chunk.content || '' }
-                break
-
-              case 'thought':
-                if (chunk.thoughtStep) {
-                  yield { type: 'thought' as const, step: chunk.thoughtStep }
-                }
-                break
-
-              case 'tool_call':
-                if (chunk.toolCall) {
-                  yield { type: 'tool' as const, call: chunk.toolCall }
-                }
-                break
-
-              case 'error':
-                yield { type: 'error' as const, error: chunk.error || '未知错误' }
-                break
-
-              case 'done':
-                // 更新会话状态
-                const updatedSession = state.agent.getSession(sessionId!)
-                if (updatedSession) {
-                  set((state) => ({
-                    sessions: state.sessions.map((s) =>
-                      s.id === sessionId ? updatedSession : s
-                    ),
-                  }))
-                }
-                yield { type: 'done' as const }
-                break
-            }
-          }
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : '流式发送失败'
-          set({ error: errorMsg })
-          yield { type: 'error' as const, error: errorMsg }
-        } finally {
-          set({ isLoading: false })
         }
       },
 
@@ -303,6 +284,9 @@ export const useAgentStore = create<AgentState>()(
           sessions: state.sessions.map((s) =>
             s.id === targetId ? newSession : s
           ),
+          streamingContent: '',
+          streamingReasoning: '',
+          streamingToolCalls: [],
         }))
       },
 
@@ -401,12 +385,68 @@ export const useAgentStore = create<AgentState>()(
       // ========== 加载状态 ==========
 
       setLoading: (loading: boolean) => set({ isLoading: loading }),
+      setStreaming: (streaming: boolean) => set({ isStreaming: streaming }),
       setError: (error: string | null) => set({ error }),
+
+      // ========== 流式内容更新 ==========
+
+      /**
+       * 追加流式文本内容
+       */
+      appendStreamingContent: (content: string) => {
+        set((state) => ({
+          streamingContent: state.streamingContent + content,
+        }))
+      },
+
+      /**
+       * 设置流式文本内容
+       */
+      setStreamingContent: (content: string) => {
+        set({ streamingContent: content })
+      },
+
+      /**
+       * 追加流式推理内容
+       */
+      appendStreamingReasoning: (content: string) => {
+        set((state) => ({
+          streamingReasoning: state.streamingReasoning + content,
+        }))
+      },
+
+      /**
+       * 设置流式推理内容
+       */
+      setStreamingReasoning: (content: string) => {
+        set({ streamingReasoning: content })
+      },
+
+      /**
+       * 添加流式工具调用
+       */
+      addStreamingToolCall: (toolCall: ToolCall) => {
+        set((state) => ({
+          streamingToolCalls: [...state.streamingToolCalls, toolCall],
+        }))
+      },
+
+      /**
+       * 清除流式状态
+       */
+      clearStreamingState: () => {
+        set({
+          streamingContent: '',
+          streamingReasoning: '',
+          streamingToolCalls: [],
+          abortController: null,
+        })
+      },
     }),
     {
       name: 'agent-store',
       storage: createJSONStorage(() => localStorage),
-      // 只持久化配置和会话列表，不持久化 Agent 实例
+      // 只持久化配置和会话列表，不持久化 Agent 实例和流式状态
       partialize: (state) => ({
         config: state.config,
         sessions: state.sessions.map((s) => ({
