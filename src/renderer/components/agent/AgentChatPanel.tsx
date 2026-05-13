@@ -54,6 +54,10 @@ import {
   IconSquare,
   IconSparkles,
   IconCpu,
+  IconPaperclip,
+  IconFileZip,
+  IconPhoto,
+  IconFile,
 } from '@tabler/icons-react'
 import { useDisclosure, useMediaQuery } from '@mantine/hooks'
 import type {
@@ -67,6 +71,7 @@ import {
   useCurrentMessages,
   useCurrentThoughtSteps,
 } from '@/packages/agent'
+import { processUploadedFile, formatFileSize, UploadedFile, getFileIconType } from '@/packages/agent/tools/file-uploader'
 import { ToolSelector } from './ToolSelector'
 import Markdown from '@/components/Markdown'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -427,25 +432,82 @@ function StreamingMessage({ content, reasoning, toolCalls }: StreamingMessagePro
  * 输入框组件属性
  */
 interface ChatInputProps {
-  onSend: (message: string) => void
+  onSend: (message: string, files?: UploadedFile[]) => void
   disabled?: boolean
   placeholder?: string
 }
 
 /**
+ * 文件附件预览组件
+ */
+function FileAttachmentPreview({
+  file,
+  onRemove,
+}: {
+  file: UploadedFile
+  onRemove: (id: string) => void
+}) {
+  const iconType = getFileIconType(file.name)
+
+  const getIcon = () => {
+    switch (iconType) {
+      case 'image':
+        return <IconPhoto size={16} />
+      case 'zip':
+        return <IconFileZip size={16} />
+      default:
+        return <IconFile size={16} />
+    }
+  }
+
+  return (
+    <Paper
+      p="xs"
+      radius="sm"
+      bg="gray.1"
+      style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+    >
+      <ThemeIcon size="sm" variant="light" color="blue">
+        {getIcon()}
+      </ThemeIcon>
+      <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+        <Text size="xs" truncate style={{ maxWidth: 150 }}>
+          {file.name}
+        </Text>
+        <Text size="xs" c="dimmed">
+          {formatFileSize(file.size)}
+        </Text>
+      </Stack>
+      <ActionIcon
+        size="sm"
+        variant="subtle"
+        color="red"
+        onClick={() => onRemove(file.id)}
+      >
+        <IconX size={14} />
+      </ActionIcon>
+    </Paper>
+  )
+}
+
+/**
  * 聊天输入框组件
- * 支持多行输入和发送
+ * 支持多行输入、文件上传和发送
  */
 function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
   const [value, setValue] = useState('')
+  const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([])
+  const [isUploading, setIsUploading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSend = useCallback(() => {
-    if (value.trim() && !disabled) {
-      onSend(value.trim())
+    if ((value.trim() || attachedFiles.length > 0) && !disabled) {
+      onSend(value.trim(), attachedFiles.length > 0 ? attachedFiles : undefined)
       setValue('')
+      setAttachedFiles([])
     }
-  }, [value, disabled, onSend])
+  }, [value, attachedFiles, disabled, onSend])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -454,29 +516,103 @@ function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
     }
   }
 
-  return (
-    <Group gap="xs" align="flex-end">
-      <TextInput
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.currentTarget.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder || '输入消息...'}
-        disabled={disabled}
-        style={{ flex: 1 }}
-        size="md"
-        rightSection={
-          <ActionIcon
-            variant="filled"
-            color="blue"
-            disabled={!value.trim() || disabled}
-            onClick={handleSend}
-          >
-            <IconSend size={16} />
-          </ActionIcon>
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    setIsUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        // 使用 Electron 的 webUtils.getPathForFile 获取文件路径
+        const filePath = (file as any).path || (window as any).electron?.webUtils?.getPathForFile?.(file)
+        if (!filePath) {
+          console.error('无法获取文件路径')
+          continue
         }
-      />
-    </Group>
+        const uploadedFile = await processUploadedFile(filePath)
+        setAttachedFiles((prev) => [...prev, uploadedFile])
+      }
+    } catch (error) {
+      console.error('文件上传失败:', error)
+    } finally {
+      setIsUploading(false)
+      // 重置 input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleRemoveFile = (fileId: string) => {
+    setAttachedFiles((prev) => prev.filter((f) => f.id !== fileId))
+  }
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  return (
+    <Stack gap="xs">
+      {/* 文件附件预览 */}
+      {attachedFiles.length > 0 && (
+        <Group gap="xs" wrap="wrap">
+          {attachedFiles.map((file) => (
+            <FileAttachmentPreview
+              key={file.id}
+              file={file}
+              onRemove={handleRemoveFile}
+            />
+          ))}
+        </Group>
+      )}
+
+      <Group gap="xs" align="flex-end">
+        {/* 文件上传按钮 */}
+        <Tooltip label="上传文件">
+          <ActionIcon
+            variant="light"
+            color="gray"
+            size="lg"
+            onClick={handleUploadClick}
+            disabled={disabled || isUploading}
+            loading={isUploading}
+          >
+            <IconPaperclip size={20} />
+          </ActionIcon>
+        </Tooltip>
+
+        {/* 隐藏的文件输入 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+          multiple
+          accept="image/*,.zip,.txt,.md,.json,.js,.ts,.jsx,.tsx,.vue,.html,.css,.scss,.less,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.rb,.php,.sh,.sql,.pdf,.doc,.docx,.xml,.yaml,.yml"
+        />
+
+        <TextInput
+          ref={inputRef}
+          value={value}
+          onChange={(e) => setValue(e.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder || '输入消息...'}
+          disabled={disabled}
+          style={{ flex: 1 }}
+          size="md"
+          rightSection={
+            <ActionIcon
+              variant="filled"
+              color="blue"
+              disabled={(!value.trim() && attachedFiles.length === 0) || disabled}
+              onClick={handleSend}
+            >
+              <IconSend size={16} />
+            </ActionIcon>
+          }
+        />
+      </Group>
+    </Stack>
   )
 }
 
@@ -720,7 +856,7 @@ export function AgentChatPanel({
    * 使用 Agent 的 sendMessageStream 进行流式生成
    */
   const handleSendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, files?: UploadedFile[]) => {
       // 确保有会话
       let currentSessionId = session?.id
       if (!currentSessionId) {
@@ -740,10 +876,11 @@ export function AgentChatPanel({
       })
 
       try {
-        // 使用 Agent 的流式发送方法，传入模型配置
+        // 使用 Agent 的流式发送方法，传入模型配置和附件
         const stream = agent.sendMessageStream(currentSessionId, content, {
           signal: abortController.signal,
           modelConfig: selectedModel.provider && selectedModel.modelId ? selectedModel : undefined,
+          attachments: files,
         })
 
         for await (const chunk of stream) {

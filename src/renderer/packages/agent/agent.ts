@@ -26,7 +26,9 @@ import type {
   AgentConfig,
   AgentResponse,
   StreamChunk,
+  UploadedFile,
 } from './types'
+import { analyzeFileForAI } from './tools/file-uploader'
 import {
   searchGitHubReposTool,
   getGitHubFileTool,
@@ -665,16 +667,21 @@ export class Agent {
     options: {
       signal?: AbortSignal
       modelConfig?: { provider: string; modelId: string }
+      attachments?: UploadedFile[]
     } = {}
   ): Promise<AgentResponse> {
     const session = this.getOrCreateSession(sessionId)
     const thoughtSteps: ThoughtStep[] = []
 
+    // 构建包含附件的完整消息内容
+    const fullContent = this.buildMessageWithAttachments(content, options.attachments)
+
     // 添加用户消息
     const userMessage: AgentMessage = {
       role: 'user',
-      content,
+      content: fullContent,
       timestamp: Date.now(),
+      attachments: options.attachments,
     }
     session.messages.push(userMessage)
 
@@ -777,6 +784,53 @@ export class Agent {
   }
 
   /**
+   * 构建包含附件的消息内容
+   */
+  private buildMessageWithAttachments(content: string, attachments?: UploadedFile[]): string {
+    if (!attachments || attachments.length === 0) {
+      return content
+    }
+
+    let fullContent = content
+    fullContent += '\n\n[附件文件]\n'
+
+    for (const file of attachments) {
+      fullContent += `\n--- ${file.name} ---\n`
+      fullContent += analyzeFileForAI(file)
+      fullContent += '\n'
+    }
+
+    return fullContent
+  }
+
+  /**
+   * 将附件转换为模型消息格式（支持图片 vision）
+   */
+  private convertAttachmentsToContentParts(attachments?: UploadedFile[]): any[] {
+    if (!attachments || attachments.length === 0) {
+      return []
+    }
+
+    const parts: any[] = []
+
+    for (const file of attachments) {
+      if (file.isImage && file.base64) {
+        // 图片使用 vision 格式
+        parts.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: file.type as any,
+            data: file.base64,
+          },
+        })
+      }
+    }
+
+    return parts
+  }
+
+  /**
    * 流式发送消息
    *
    * 返回 AsyncGenerator，逐步产出：
@@ -794,16 +848,21 @@ export class Agent {
       signal?: AbortSignal
       modelConfig?: { provider: string; modelId: string }
       enableTools?: boolean
+      attachments?: UploadedFile[]
     } = {}
   ): AsyncGenerator<StreamChunk> {
     const session = this.getOrCreateSession(sessionId)
     const thoughtSteps: ThoughtStep[] = []
 
+    // 构建包含附件的完整消息内容
+    const fullContent = this.buildMessageWithAttachments(content, options.attachments)
+
     // 添加用户消息
     const userMessage: AgentMessage = {
       role: 'user',
-      content,
+      content: fullContent,
       timestamp: Date.now(),
+      attachments: options.attachments,
     }
     session.messages.push(userMessage)
 

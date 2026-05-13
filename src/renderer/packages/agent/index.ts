@@ -23,6 +23,10 @@ export type {
   // GitHub 类型
   GitHubRepo,
   GitHubFile,
+
+  // 文件上传类型
+  UploadedFile,
+  ZipContent,
 } from './types'
 
 // ==================== 智能体核心导出 ====================
@@ -128,6 +132,22 @@ export {
   generateGitignoreTool,
   cicdBuilderTools,
 } from './tools/cicd-builder'
+
+// 文件上传工具
+export {
+  processUploadedFile,
+  readFileAsBase64,
+  readTextFile,
+  isImageFile,
+  isZipFile,
+  readZipFile,
+  formatFileSize,
+  analyzeFileForAI,
+  getFileIconType,
+  validateFileSize,
+  type UploadedFile as FileUploaderUploadedFile,
+  type ZipContent as FileUploaderZipContent,
+} from './tools/file-uploader'
 
 // ==================== 工具集合 ====================
 import { searchTools } from './tools/web-search'

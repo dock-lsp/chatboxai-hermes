@@ -48,6 +48,30 @@ export interface AgentMessage {
   content: string
   toolCalls?: ToolCall[]
   timestamp: number
+  attachments?: UploadedFile[]  // 新增附件字段
+}
+
+/** 上传的文件 */
+export interface UploadedFile {
+  id: string
+  name: string
+  path: string
+  size: number
+  type: string
+  content?: string
+  base64?: string
+  isImage: boolean
+  isZip: boolean
+  zipContents?: ZipContent[]
+}
+
+/** ZIP 文件内容 */
+export interface ZipContent {
+  name: string
+  path: string
+  size: number
+  content?: string
+  isText: boolean
 }
 
 /** 项目生成配置 */
