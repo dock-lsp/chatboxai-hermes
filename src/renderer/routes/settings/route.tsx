@@ -13,6 +13,7 @@ import {
   IconInfoCircle,
   IconKeyboard,
   IconMessages,
+  IconRobot,
   IconSparkles,
   IconWorldWww,
 } from '@tabler/icons-react'
@@ -25,6 +26,7 @@ import Page from '@/components/layout/Page'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { HermesSettingsTab } from '@/components/hermes'
 import { FileTreePanel } from '@/components/file-tree'
+import { AgentChatPanel, ProjectGeneratorPanel } from '@/components/agent'
 import { useProviders } from '@/hooks/useProviders'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import platform from '@/platform'
@@ -97,6 +99,16 @@ const ITEMS = [
     key: 'file-tree',
     label: 'File Manager',
     icon: <IconFile className="w-full h-full" />,
+  },
+  {
+    key: 'agent',
+    label: 'AI Agent',
+    icon: <IconRobot className="w-full h-full" />,
+  },
+  {
+    key: 'project-generator',
+    label: 'Project Generator',
+    icon: <IconBox className="w-full h-full" />,
   },
   {
     key: 'general',
@@ -239,7 +251,17 @@ export function SettingsRoot() {
       )}
       {!(isSmallScreen && routerState.location.pathname === '/settings') && (
         <Box flex="1 1 80%" className="overflow-auto">
-          {key === 'hermes' ? <HermesSettingsTab /> : key === 'file-tree' ? <FileTreePanel /> : <Outlet />}
+          {key === 'hermes' ? (
+            <HermesSettingsTab />
+          ) : key === 'file-tree' ? (
+            <FileTreePanel />
+          ) : key === 'agent' ? (
+            <AgentChatPanel />
+          ) : key === 'project-generator' ? (
+            <ProjectGeneratorPanel />
+          ) : (
+            <Outlet />
+          )}
         </Box>
       )}
     </Flex>
