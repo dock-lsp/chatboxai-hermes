@@ -97,11 +97,6 @@ export {
   checkGitInstalled,
   getDefaultCloneDir,
   ensureDir,
-  executeGitInit,
-  executeGitAdd,
-  executeGitCommit,
-  executeGitPush,
-  executeGitWorkflow,
 } from './tools/git-executor'
 
 // 项目生成器工具
