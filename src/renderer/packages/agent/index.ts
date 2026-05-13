@@ -76,7 +76,6 @@ export {
   getGitHubTokenStatusTool,
   createGitHubRepoTool,
   pushToGitHubTool,
-  pushMultipleFilesTool,
   generateGitCommandsTool,
   // Token 管理函数
   setGitHubToken,

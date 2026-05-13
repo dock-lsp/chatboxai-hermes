@@ -42,7 +42,6 @@ import {
   getGitHubTokenStatusTool,
   createGitHubRepoTool,
   pushToGitHubTool,
-  pushMultipleFilesTool,
   generateGitCommandsTool,
 } from './tools/github'
 import {
@@ -515,10 +514,10 @@ export class Agent {
       })
     }
 
-    // 批量推送文件工具
+    // 批量推送文件工具（循环调用 pushToGitHubTool）
     if (this.config.enabledTools.includes('github_push_multiple_files')) {
       tools.github_push_multiple_files = tool({
-        description: pushMultipleFilesTool.description,
+        description: '批量推送多个文件到 GitHub 仓库。需要设置 GitHub Token。',
         inputSchema: z.object({
           owner: z.string().describe('仓库所有者（用户名）'),
           repo: z.string().describe('仓库名'),
@@ -530,7 +529,19 @@ export class Agent {
           branch: z.string().optional().describe('分支名'),
         }),
         execute: async (args) => {
-          return await pushMultipleFilesTool.execute(args)
+          const results = []
+          for (const file of args.files) {
+            const result = await pushToGitHubTool.execute({
+              owner: args.owner,
+              repo: args.repo,
+              path: file.path,
+              content: file.content,
+              message: args.message,
+              branch: args.branch,
+            })
+            results.push({ path: file.path, ...result })
+          }
+          return { success: true, results }
         },
       })
     }
