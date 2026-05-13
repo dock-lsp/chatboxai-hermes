@@ -90,6 +90,8 @@ export {
   createGenericTemplate,
   generateProject,
   generateASCIITree,
+  // 分析函数
+  analyzeProjectRequirements,
 } from './tools/project-generator'
 
 // ==================== 工具集合 ====================
@@ -221,4 +223,4 @@ export const VERSION = '1.0.0'
 export const AGENT_NAME = 'ChatboxAI Agent'
 
 // ==================== 默认导出 ====================
-export { default } from './agent'
+export { Agent as default } from './agent'

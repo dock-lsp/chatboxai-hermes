@@ -1507,3 +1507,86 @@ export {
   generateProject,
   generateASCIITree,
 }
+
+/**
+ * 分析项目需求
+ * 根据描述自动推荐项目类型和特性
+ */
+export async function analyzeProjectRequirements(description: string): Promise<{
+  description: string
+  analysis: {
+    recommendedType: ProjectGenerationConfig['type']
+    recommendedFeatures: string[]
+    confidence: 'high' | 'low'
+  }
+  suggestion: string
+}> {
+  const lowerDesc = description.toLowerCase()
+
+  // 分析项目类型
+  let recommendedType: ProjectGenerationConfig['type'] = 'generic'
+  const recommendedFeatures: string[] = []
+
+  if (lowerDesc.includes('react') || lowerDesc.includes('前端') || lowerDesc.includes('web')) {
+    recommendedType = 'react'
+    if (lowerDesc.includes('路由') || lowerDesc.includes('router')) {
+      recommendedFeatures.push('router')
+    }
+    if (lowerDesc.includes('状态') || lowerDesc.includes('state')) {
+      recommendedFeatures.push('state-management')
+    }
+    if (lowerDesc.includes('样式') || lowerDesc.includes('css') || lowerDesc.includes('tailwind')) {
+      recommendedFeatures.push('styling')
+    }
+  } else if (lowerDesc.includes('vue')) {
+    recommendedType = 'vue'
+    if (lowerDesc.includes('路由') || lowerDesc.includes('router')) {
+      recommendedFeatures.push('router')
+    }
+    if (lowerDesc.includes('状态') || lowerDesc.includes('pinia')) {
+      recommendedFeatures.push('state-management')
+    }
+  } else if (lowerDesc.includes('python') || lowerDesc.includes('flask') || lowerDesc.includes('django')) {
+    recommendedType = 'python'
+    if (lowerDesc.includes('api') || lowerDesc.includes('web') || lowerDesc.includes('fastapi')) {
+      recommendedFeatures.push('web-framework')
+    }
+    if (lowerDesc.includes('数据') || lowerDesc.includes('pandas')) {
+      recommendedFeatures.push('data-processing')
+    }
+    if (lowerDesc.includes('测试') || lowerDesc.includes('test')) {
+      recommendedFeatures.push('testing')
+    }
+    if (lowerDesc.includes('命令行') || lowerDesc.includes('cli')) {
+      recommendedFeatures.push('cli')
+    }
+  } else if (lowerDesc.includes('node') || lowerDesc.includes('express') || lowerDesc.includes('后端')) {
+    recommendedType = 'nodejs'
+    if (lowerDesc.includes('express')) {
+      recommendedFeatures.push('express')
+    }
+    if (lowerDesc.includes('fastify')) {
+      recommendedFeatures.push('fastify')
+    }
+    if (lowerDesc.includes('数据库') || lowerDesc.includes('database') || lowerDesc.includes('prisma')) {
+      recommendedFeatures.push('database')
+    }
+    if (lowerDesc.includes('测试') || lowerDesc.includes('test')) {
+      recommendedFeatures.push('testing')
+    }
+  } else if (lowerDesc.includes('flutter') || lowerDesc.includes('移动')) {
+    recommendedType = 'flutter'
+  } else if (lowerDesc.includes('android')) {
+    recommendedType = 'android'
+  }
+
+  return {
+    description,
+    analysis: {
+      recommendedType,
+      recommendedFeatures,
+      confidence: recommendedType !== 'generic' ? 'high' : 'low',
+    },
+    suggestion: `建议创建 ${recommendedType} 类型的项目，包含以下特性: ${recommendedFeatures.join(', ') || '基础功能'}`,
+  }
+}
