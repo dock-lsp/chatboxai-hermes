@@ -8,7 +8,6 @@ import { Button, Card, Collapse, Group, NumberInput, Slider, Stack, Switch, Text
 import { IconBrain, IconChevronDown, IconChevronRight, IconListDetails, IconRobot } from '@tabler/icons-react'
 import { create } from 'zustand'
 import { memo, useCallback, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import MemoryPanel from './MemoryPanel'
 import SkillsPanel from './SkillsPanel'
 
@@ -70,8 +69,6 @@ const HermesSettingsTab = memo<{
   /** 点击"查看技能"按钮的回调（已弃用，保留以兼容旧代码） */
   onViewSkills?: () => void
 }>(({ onViewMemories, onViewSkills }) => {
-  const { t } = useTranslation()
-
   // 内嵌面板显示状态
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false)
   const [skillsPanelOpen, setSkillsPanelOpen] = useState(false)
@@ -112,21 +109,21 @@ const HermesSettingsTab = memo<{
 
   return (
     <Stack gap="xl" p="md">
-      <Title order={5}>{t('Hermes Settings')}</Title>
+      <Title order={5}>Hermes AI 设置</Title>
 
       {/* 记忆系统设置 */}
       <Stack gap="md">
-        <Text fw="600">{t('Memory System')}</Text>
+        <Text fw="600">记忆系统</Text>
         <Stack gap="xxs">
           <Group justify="space-between" align="center">
-            <Text size="sm">{t('Auto-extract memories')}</Text>
+            <Text size="sm">自动提取记忆</Text>
             <Switch
               checked={memoryEnabled}
               onChange={(e) => setMemoryEnabled(e.currentTarget.checked)}
             />
           </Group>
           <Text size="xs" c="chatbox-tertiary">
-            {t('Automatically extract key information from conversations as memories for future reference.')}
+            自动从对话中提取关键信息作为记忆，供将来参考使用。
           </Text>
         </Stack>
         <Button
@@ -144,7 +141,7 @@ const HermesSettingsTab = memo<{
           }
           onClick={handleViewMemories}
         >
-          {memoryPanelOpen && !onViewMemories ? t('Hide Memories') : t('View Memories')}
+          {memoryPanelOpen && !onViewMemories ? '隐藏记忆' : '查看记忆'}
         </Button>
 
         {/* 内嵌记忆面板 */}
@@ -159,17 +156,17 @@ const HermesSettingsTab = memo<{
 
       {/* 技能系统设置 */}
       <Stack gap="md">
-        <Text fw="600">{t('Skill System')}</Text>
+        <Text fw="600">技能系统</Text>
         <Stack gap="xxs">
           <Group justify="space-between" align="center">
-            <Text size="sm">{t('Auto-create skills')}</Text>
+            <Text size="sm">自动创建技能</Text>
             <Switch
               checked={skillsEnabled}
               onChange={(e) => setSkillsEnabled(e.currentTarget.checked)}
             />
           </Group>
           <Text size="xs" c="chatbox-tertiary">
-            {t('Automatically create reusable skills from complex task patterns.')}
+            从复杂的任务模式中自动创建可复用的技能。
           </Text>
         </Stack>
         <Button
@@ -187,7 +184,7 @@ const HermesSettingsTab = memo<{
           }
           onClick={handleViewSkills}
         >
-          {skillsPanelOpen && !onViewSkills ? t('Hide Skills') : t('View Skills')}
+          {skillsPanelOpen && !onViewSkills ? '隐藏技能' : '查看技能'}
         </Button>
 
         {/* 内嵌技能面板 */}
@@ -202,23 +199,23 @@ const HermesSettingsTab = memo<{
 
       {/* 子代理系统设置 */}
       <Stack gap="md">
-        <Text fw="600">{t('Subagent System')}</Text>
+        <Text fw="600">子代理系统</Text>
         <Stack gap="xxs">
           <Group justify="space-between" align="center">
-            <Text size="sm">{t('Auto-split subtasks')}</Text>
+            <Text size="sm">自动拆分子任务</Text>
             <Switch
               checked={subagentEnabled}
               onChange={(e) => setSubagentEnabled(e.currentTarget.checked)}
             />
           </Group>
           <Text size="xs" c="chatbox-tertiary">
-            {t('Automatically decompose complex tasks into parallel subtasks for faster execution.')}
+            自动将复杂任务分解为并行子任务，加快执行速度。
           </Text>
         </Stack>
 
         {/* 子代理最大并行数滑块 */}
         <Stack gap="xxs">
-          <Text size="sm">{t('Max concurrent subagents')}</Text>
+          <Text size="sm">最大并行子代理数</Text>
           <Slider
             min={1}
             max={5}
@@ -238,7 +235,7 @@ const HermesSettingsTab = memo<{
 
         {/* 子代理超时时间输入 */}
         <Stack gap="xxs">
-          <Text size="sm">{t('Subagent timeout (seconds)')}</Text>
+          <Text size="sm">子代理超时时间（秒）</Text>
           <NumberInput
             min={10}
             max={600}
