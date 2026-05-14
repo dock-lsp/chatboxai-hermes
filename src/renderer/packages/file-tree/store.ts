@@ -336,17 +336,42 @@ export const useFlattenedList = () => useFileTreeStore((state) => state.flattene
 
 /** 获取扫描状态 */
 export const useScanStatus = () =>
-  useFileTreeStore((state) => ({
-    isScanning: state.isScanning,
-    scanProgress: state.scanProgress,
-    currentScanPath: state.currentScanPath
-  }))
+  useFileTreeStore(
+    (state) => ({
+      isScanning: state.isScanning,
+      scanProgress: state.scanProgress,
+      currentScanPath: state.currentScanPath
+    }),
+    // 自定义比较函数
+    (a, b) =>
+      a.isScanning === b.isScanning &&
+      a.scanProgress === b.scanProgress &&
+      a.currentScanPath === b.currentScanPath
+  )
 
 /** 获取扫描配置 */
-export const useScanConfig = () => useFileTreeStore((state) => state.scanConfig)
+export const useScanConfig = () =>
+  useFileTreeStore(
+    (state) => state.scanConfig,
+    // 浅比较，immer 会保持未变更的字段引用
+    (a, b) =>
+      a.rootPath === b.rootPath &&
+      a.includeHidden === b.includeHidden &&
+      a.maxDepth === b.maxDepth
+  )
 
 /** 获取云端配置 */
-export const useCloudConfig = () => useFileTreeStore((state) => state.cloudConfig)
+export const useCloudConfig = () =>
+  useFileTreeStore(
+    (state) => state.cloudConfig,
+    // 浅比较
+    (a, b) =>
+      a.enabled === b.enabled &&
+      a.serverUrl === b.serverUrl &&
+      a.apiKey === b.apiKey &&
+      a.bucketId === b.bucketId &&
+      a.syncInterval === b.syncInterval
+  )
 
 /** 获取同步状态 */
 export const useSyncStatus = () => useFileTreeStore((state) => state.syncStatus)
@@ -382,5 +407,11 @@ export function useFileStats() {
     traverse(root)
 
     return { totalFiles, totalDirectories, totalSize }
+  }, 
+  // 自定义比较函数，避免对象引用变化导致的不必要重渲染
+  (a, b) => {
+    return a.totalFiles === b.totalFiles && 
+           a.totalDirectories === b.totalDirectories && 
+           a.totalSize === b.totalSize
   })
 }
