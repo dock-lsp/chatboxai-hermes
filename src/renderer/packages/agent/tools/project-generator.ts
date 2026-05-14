@@ -1,4 +1,24 @@
 import type { Tool, ProjectGenerationConfig, GeneratedFile, GeneratedProject } from '../types'
+import * as os from 'os'
+import * as path from 'path'
+
+/**
+ * 安全调用 electronAPI
+ */
+function getElectronAPI(): any {
+  if (typeof window !== 'undefined' && window.electronAPI) {
+    return window.electronAPI
+  }
+  return null
+}
+
+/**
+ * 获取默认项目输出目录
+ */
+function getDefaultProjectDir(projectName: string): string {
+  const homeDir = os.homedir() || process.cwd()
+  return path.join(homeDir, 'Projects', projectName)
+}
 
 /**
  * 项目模板定义
@@ -1349,13 +1369,59 @@ export const projectGeneratorTool: Tool = {
       type: args.type,
       description: args.description,
       features: args.features || [],
-      outputPath: args.outputPath || `./${args.name}`,
+      outputPath: args.outputPath || undefined,
     }
 
     const project = generateProject(config)
 
+    // 真实创建项目文件到本地
+    const outputDir = args.outputPath || getDefaultProjectDir(args.name)
+    const createdFiles: string[] = []
+    const errors: string[] = []
+
+    try {
+      const api = getElectronAPI()
+      if (api) {
+        // 创建项目根目录
+        try {
+          await api.invoke('file:create-directory', outputDir)
+        } catch (e) {
+          errors.push(`创建目录失败: ${e}`)
+        }
+
+        // 创建所有文件
+        for (const file of project.files) {
+          const filePath = `${outputDir}/${file.path}`
+          try {
+            // 确保父目录存在
+            const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+            if (dir) {
+              try {
+                await api.invoke('file:create-directory', dir)
+              } catch {
+                // 目录可能已存在
+              }
+            }
+            // 写入文件
+            await api.invoke('file:write', filePath, file.content)
+            createdFiles.push(file.path)
+          } catch (e: any) {
+            errors.push(`写入文件 ${file.path} 失败: ${e}`)
+          }
+        }
+      }
+    } catch {
+      // 非 Electron 环境，跳过文件创建
+    }
+
     return {
       success: true,
+      message: createdFiles.length > 0
+        ? `✅ 项目已创建！共 ${createdFiles.length} 个文件已写入 ${outputDir}`
+        : `项目结构已生成（共 ${project.files.length} 个文件）`,
+      outputDir,
+      createdFiles,
+      errors: errors.length > 0 ? errors : undefined,
       project: {
         name: project.config.name,
         type: project.config.type,
@@ -1365,6 +1431,7 @@ export const projectGeneratorTool: Tool = {
         files: project.files.map((f) => ({
           path: f.path,
           language: f.language,
+          content: f.content,
           size: f.content.length,
         })),
       },
