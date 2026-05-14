@@ -300,10 +300,10 @@ export const searchGitHubReposTool: Tool = {
         query: args.query,
         results,
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '搜索失败',
+        error: error?.message || String(error) || '搜索失败',
         query: args.query,
       }
     }
@@ -350,10 +350,10 @@ export const getGitHubFileTool: Tool = {
         success: true,
         file,
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '获取文件失败',
+        error: error?.message || String(error) || '获取文件失败',
         owner: args.owner,
         repo: args.repo,
         path: args.path,
@@ -390,10 +390,10 @@ export const getGitHubRepoTool: Tool = {
         success: true,
         repository,
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '获取仓库失败',
+        error: error?.message || String(error) || '获取仓库失败',
         owner: args.owner,
         repo: args.repo,
       }
@@ -444,10 +444,10 @@ export const listGitHubDirTool: Tool = {
         repo: args.repo,
         path: args.path || '/',
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '获取目录失败',
+        error: error?.message || String(error) || '获取目录失败',
         owner: args.owner,
         repo: args.repo,
         path: args.path,
@@ -490,10 +490,10 @@ export const getGitHubReadmeTool: Tool = {
         success: true,
         readme,
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '获取 README 失败',
+        error: error?.message || String(error) || '获取 README 失败',
         owner: args.owner,
         repo: args.repo,
       }
@@ -553,10 +553,10 @@ export const createGitHubIssueTool: Tool = {
         success: true,
         issue,
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '创建 Issue 失败',
+        error: error?.message || String(error) || '创建 Issue 失败',
         owner: args.owner,
         repo: args.repo,
       }
@@ -601,10 +601,10 @@ export const searchGitHubCodeTool: Tool = {
         totalCount: results.length,
         results,
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '搜索失败',
+        error: error?.message || String(error) || '搜索失败',
         query: args.query,
       }
     }
@@ -890,10 +890,10 @@ export const createGitHubRepoTool: Tool = {
         },
         message: `仓库 ${data.full_name} 创建成功`,
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '创建仓库失败',
+        error: error?.message || String(error) || '创建仓库失败',
       }
     }
   },
@@ -1000,10 +1000,10 @@ export const pushToGitHubTool: Tool = {
         success: true,
         message: `文件 ${args.path} 推送成功`,
       }
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : '推送失败',
+        error: error?.message || String(error) || '推送失败',
       }
     }
   },

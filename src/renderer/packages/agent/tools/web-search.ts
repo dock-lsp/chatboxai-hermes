@@ -290,8 +290,9 @@ export const fetchWebPageTool: Tool = {
         content: text,
         length: text.length,
       }
-    } catch (error) {
-      throw new Error(`获取网页失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error) || '未知错误'
+      throw new Error(`获取网页失败: ${errorMessage}`)
     }
   },
 }

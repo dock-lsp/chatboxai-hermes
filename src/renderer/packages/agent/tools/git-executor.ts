@@ -68,11 +68,11 @@ export async function executeGitClone(options: CloneOptions): Promise<CloneResul
         error: result.error,
       }
     }
-  } catch (error) {
+  } catch (error: any) {
     return {
       success: false,
       output: '',
-      error: error instanceof Error ? error.message : '未知错误',
+      error: error?.message || String(error) || '未知错误',
     }
   }
 }
