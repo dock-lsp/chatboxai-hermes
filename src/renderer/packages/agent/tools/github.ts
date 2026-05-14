@@ -706,7 +706,7 @@ export const cloneGitHubRepoTool: Tool = {
         if (downloadResult.success) {
           return {
             success: true,
-            message: `ZIP 下载成功！（移动端模式）`,
+            message: `✅ 项目已下载！（移动端模式）`,
             clonePath: targetDir,
             zipPath: downloadResult.savePath,
             repoUrl: normalizedUrl,
@@ -714,9 +714,9 @@ export const cloneGitHubRepoTool: Tool = {
             deviceType: 'mobile',
             openable: true,
             nextSteps: [
-              `ZIP 文件位置: ${downloadResult.savePath}`,
-              `请手动解压 ZIP 文件到目标目录`,
-              `提示: 移动端不支持 git clone，已下载 ZIP 压缩包`,
+              `📦 ZIP 文件: ${downloadResult.savePath}`,
+              `请解压 ZIP 文件即可使用项目`,
+              `提示: 移动端已自动下载 ZIP 压缩包`,
             ],
           }
         } else {

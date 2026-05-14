@@ -88,20 +88,37 @@ export async function executeGitClone(options: CloneOptions): Promise<CloneResul
 }
 
 /**
- * 下载文件（用于移动端下载 ZIP）
+ * 下载文件
+ * Electron 环境：通过 IPC 保存到本地
+ * 浏览器/移动端：触发浏览器下载
  */
 export async function downloadFile(url: string, savePath: string): Promise<{ success: boolean; savePath?: string; error?: string }> {
   try {
     const api = getElectronAPI()
-    if (!api) {
-      return {
-        success: false,
-        error: '当前环境不支持下载文件（非 Electron 桌面环境）',
-      }
+    if (api) {
+      // Electron 桌面端：通过 IPC 保存
+      const result = await api.invoke('file:download', { url, savePath })
+      return result
     }
 
-    const result = await api.invoke('file:download', { url, savePath })
-    return result
+    // 浏览器/移动端：使用 fetch + Blob 下载
+    const response = await fetch(url)
+    if (!response.ok) {
+      return { success: false, error: `下载失败: HTTP ${response.status}` }
+    }
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = blobUrl
+    // 从 savePath 或 URL 中提取文件名
+    const fileName = savePath?.split('/').pop() || url.split('/').pop() || 'download.zip'
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(blobUrl)
+
+    return { success: true, savePath: fileName }
   } catch (error: any) {
     return {
       success: false,
