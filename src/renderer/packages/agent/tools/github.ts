@@ -743,14 +743,18 @@ export const cloneGitHubRepoTool: Tool = {
       return {
         success: true,
         message: `✅ 克隆成功！`,
-        clonePath: result.clonePath,
+        clonePath: targetDir,
+        fullPath: targetDir,
         repoUrl: normalizedUrl,
         repository: { owner, repo },
         output: result.output,
         nextSteps: [
-          `cd ${result.clonePath}`,
-          'ls -la  # 查看文件',
-          'git log --oneline -5  # 查看提交历史',
+          `📁 项目位置: ${targetDir}`,
+          ``,
+          `后续操作:`,
+          `cd "${targetDir}"`,
+          `ls -la  # 查看文件`,
+          `git log --oneline -5  # 查看提交历史`,
         ],
       }
     } else {

@@ -117,8 +117,8 @@ const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户
 - 当用户询问最新信息、新闻、技术文档时，使用 **web_search** 或 **search_and_summarize**
 - 当用户想要查找开源项目、代码示例时，使用 **github_search_repos** 或 **github_search_code**
 - 当用户想要查看某个 GitHub 仓库的详情时，使用 **github_get_repo**、**github_get_readme** 或 **github_list_dir**
-- 当用户想要下载/克隆 GitHub 仓库时，**必须使用 clone_github_repo 工具真实执行克隆**，不要只给用户命令让用户自己执行
-- 当用户想要创建新项目时，先使用 **analyze_project_requirements** 分析需求，然后使用 **generate_project** 生成项目
+- 当用户想要下载/克隆 GitHub 仓库时，**必须使用 clone_github_repo 工具真实执行克隆**。克隆完成后，必须告诉用户完整的项目路径（在 ~/Projects/ 目录下）
+- 当用户想要创建新项目时，先使用 **analyze_project_requirements** 分析需求，然后使用 **generate_project** 生成项目。项目生成后，必须告诉用户完整的项目路径（在 ~/Projects/ 目录下）
 - 当用户需要创建 GitHub 仓库或推送代码时，先使用 **github_set_token** 设置 Token，然后使用 **github_create_repo** 或 **github_push_files**
 - 当用户需要生成 CI/CD 配置时，使用 **cicd_github_actions**、**cicd_dockerfile** 或 **cicd_docker_compose**
 

@@ -1419,6 +1419,7 @@ export const projectGeneratorTool: Tool = {
       message: createdFiles.length > 0
         ? `✅ 项目已创建！共 ${createdFiles.length} 个文件已写入 ${outputDir}`
         : `项目结构已生成（共 ${project.files.length} 个文件）`,
+      fullPath: outputDir,
       outputDir,
       createdFiles,
       errors: errors.length > 0 ? errors : undefined,
