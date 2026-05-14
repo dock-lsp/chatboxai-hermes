@@ -17,4 +17,6 @@ export interface ElectronIPC {
   writeFile: (path: string, content: string) => Promise<void>
   /** 文件操作 - 创建目录 */
   createDirectory: (path: string) => Promise<void>
+  /** 文件操作 - 下载文件（用于移动端下载 ZIP 等） */
+  downloadFile: (url: string, savePath: string) => Promise<{ success: boolean; savePath?: string; error?: string }>
 }

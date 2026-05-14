@@ -1,5 +1,5 @@
 import type { Tool, GitHubRepo, GitHubFile } from '../types'
-import { executeGitClone, checkGitInstalled, getDefaultCloneDir, ensureDir } from './git-executor'
+import { executeGitClone, checkGitInstalled, getDefaultCloneDir, ensureDir, downloadFile, extractRepoInfo, detectDeviceType } from './git-executor'
 
 const GITHUB_API_BASE = 'https://api.github.com'
 
@@ -614,11 +614,12 @@ export const searchGitHubCodeTool: Tool = {
 /**
  * 克隆 GitHub 仓库工具
  * 真实执行 git clone 命令并克隆仓库到本地
+ * 支持断点续传、进度显示、PC/移动端自动适配
  */
 export const cloneGitHubRepoTool: Tool = {
   name: 'clone_github_repo',
   description:
-    '克隆 GitHub 仓库到本地指定目录。会真实执行 git clone 命令，不是只生成命令。当用户想要下载或使用某个 GitHub 项目时使用此工具。',
+    '克隆 GitHub 仓库到本地指定目录。会真实执行 git clone 命令，不是只生成命令。支持断点续传和进度显示。当用户想要下载或使用某个 GitHub 项目时使用此工具。',
   parameters: [
     {
       name: 'repoUrl',
@@ -653,19 +654,8 @@ export const cloneGitHubRepoTool: Tool = {
   }) => {
     const { repoUrl, localPath, branch, depth } = args
 
-    // 检查是否安装了 git
-    const hasGit = await checkGitInstalled()
-    if (!hasGit) {
-      return {
-        success: false,
-        error: '未检测到 Git，请先安装 Git',
-        instructions: [
-          'Windows: 下载安装 https://git-scm.com/download/win',
-          'macOS: 运行 brew install git',
-          'Linux: 运行 sudo apt-get install git',
-        ],
-      }
-    }
+    // 检测设备类型
+    const deviceType = detectDeviceType()
 
     // 验证 URL 格式
     const httpsPattern = /^https:\/\/github\.com\/[^/]+\/[^/]+(\/)?$/
@@ -692,20 +682,75 @@ export const cloneGitHubRepoTool: Tool = {
     }
 
     // 提取仓库信息
-    let owner = ''
-    let repo = ''
+    const repoInfo = extractRepoInfo(normalizedUrl)
+    const owner = repoInfo?.owner || ''
+    const repo = repoInfo?.repo || ''
 
-    if (normalizedUrl.startsWith('https://')) {
-      const match = normalizedUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
-      if (match) {
-        owner = match[1]
-        repo = match[2].replace(/\.git$/, '')
+    // ==================== 移动端：使用 GitHub API 下载 ZIP ====================
+    if (deviceType === 'mobile') {
+      try {
+        // 确定保存路径
+        let targetDir = localPath
+        if (!targetDir) {
+          targetDir = `~/Projects/${repo}`
+        }
+
+        // 构建 ZIP 下载 URL
+        const branchRef = branch || 'HEAD'
+        const zipUrl = `${GITHUB_API_BASE}/repos/${owner}/${repo}/zipball/${branchRef}`
+
+        // 下载 ZIP 文件
+        const zipSavePath = `${targetDir}.zip`
+        const downloadResult = await downloadFile(zipUrl, zipSavePath)
+
+        if (downloadResult.success) {
+          return {
+            success: true,
+            message: `ZIP 下载成功！（移动端模式）`,
+            clonePath: targetDir,
+            zipPath: downloadResult.savePath,
+            repoUrl: normalizedUrl,
+            repository: { owner, repo },
+            deviceType: 'mobile',
+            openable: true,
+            nextSteps: [
+              `ZIP 文件位置: ${downloadResult.savePath}`,
+              `请手动解压 ZIP 文件到目标目录`,
+              `提示: 移动端不支持 git clone，已下载 ZIP 压缩包`,
+            ],
+          }
+        } else {
+          return {
+            success: false,
+            message: 'ZIP 下载失败',
+            error: downloadResult.error,
+            deviceType: 'mobile',
+            suggestion: '请检查网络连接或尝试使用 PC 端克隆',
+          }
+        }
+      } catch (error: any) {
+        return {
+          success: false,
+          message: '移动端下载失败',
+          error: error?.message || String(error),
+          deviceType: 'mobile',
+        }
       }
-    } else if (normalizedUrl.startsWith('git@')) {
-      const match = normalizedUrl.match(/github\.com:([^/]+)\/([^/]+)/)
-      if (match) {
-        owner = match[1]
-        repo = match[2].replace(/\.git$/, '')
+    }
+
+    // ==================== PC 端：使用 git clone ====================
+
+    // 检查是否安装了 git
+    const hasGit = await checkGitInstalled()
+    if (!hasGit) {
+      return {
+        success: false,
+        error: '未检测到 Git，请先安装 Git',
+        instructions: [
+          'Windows: 下载安装 https://git-scm.com/download/win',
+          'macOS: 运行 brew install git',
+          'Linux: 运行 sudo apt-get install git',
+        ],
       }
     }
 
@@ -717,42 +762,39 @@ export const cloneGitHubRepoTool: Tool = {
       targetDir = `${defaultDir}/${repo}`
     }
 
-    // 检查目标目录是否已存在
-    try {
-      const fs = await import('fs')
-      if (fs.existsSync(targetDir)) {
-        return {
-          success: false,
-          error: `目标目录已存在: ${targetDir}`,
-          suggestion: '请指定其他路径或删除现有目录',
-        }
-      }
-    } catch {
-      // 如果无法检查，继续尝试克隆
-    }
-
-    // 执行克隆
+    // 执行克隆（支持断点续传和进度）
     const result = await executeGitClone({
       repoUrl: normalizedUrl,
       targetDir,
       branch,
       depth,
+      onProgress: (progress) => {
+        // 进度回调（可用于前端实时显示）
+        console.log('[Clone Progress]', progress)
+      },
     })
 
     if (result.success) {
       return {
         success: true,
-        message: `✅ 克隆成功！`,
-        clonePath: targetDir,
+        message: result.resumed
+          ? `断点续传成功！`
+          : `克隆成功！`,
+        clonePath: result.clonePath,
         fullPath: targetDir,
         repoUrl: normalizedUrl,
         repository: { owner, repo },
         output: result.output,
+        progress: result.progress,
+        resumed: result.resumed || false,
+        openable: true,
+        deviceType: 'pc',
         nextSteps: [
-          `📁 项目位置: ${targetDir}`,
+          `项目位置: ${result.clonePath}`,
+          result.resumed ? '(已从上次中断处继续)' : '',
           ``,
           `后续操作:`,
-          `cd "${targetDir}"`,
+          `cd "${result.clonePath}"`,
           `ls -la  # 查看文件`,
           `git log --oneline -5  # 查看提交历史`,
         ],
@@ -760,8 +802,9 @@ export const cloneGitHubRepoTool: Tool = {
     } else {
       return {
         success: false,
-        message: '❌ 克隆失败',
+        message: '克隆失败',
         error: result.error,
+        progress: result.progress,
         suggestion: '请检查网络连接、仓库 URL 是否正确，或尝试使用 SSH 方式',
       }
     }

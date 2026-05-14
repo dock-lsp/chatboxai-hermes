@@ -836,47 +836,146 @@ ipcMain.handle('file:create-directory', async (_event, dirPath: string) => {
   }
 })
 
-/** 执行 Git Clone */
-ipcMain.handle('git:clone', async (_event, options: { repoUrl: string; targetDir?: string; branch?: string; depth?: number }) => {
+/** 执行 Git Clone（支持断点续传和进度） */
+ipcMain.handle('git:clone', async (_event, options: {
+  repoUrl: string;
+  targetDir?: string;
+  branch?: string;
+  depth?: number;
+  onProgress?: (progress: string) => void;
+}) => {
   return new Promise((resolve) => {
     const args: string[] = ['clone']
-    if (options.branch) {
-      args.push('-b', options.branch)
-    }
-    if (options.depth && options.depth > 0) {
-      args.push('--depth', String(options.depth))
-    }
-    args.push(options.repoUrl)
-    if (options.targetDir) {
-      args.push(options.targetDir)
-    }
+    const fs = require('fs')
+    const targetDir = options.targetDir
 
-    const gitProcess = spawn('git', args, { shell: true })
-    let output = ''
-    let errorOutput = ''
+    // 断点续传：如果目标目录已存在（可能是之前中断的克隆），使用 fetch 续传
+    if (targetDir && fs.existsSync(targetDir)) {
+      // 检查是否是有效的 git 仓库（之前克隆中断的）
+      const gitDir = path.join(targetDir, '.git')
+      if (fs.existsSync(gitDir)) {
+        // 断点续传：进入目录执行 git fetch
+        const fetchArgs = ['fetch', '--all']
+        if (options.branch) {
+          fetchArgs.push('origin', options.branch)
+        }
+        const fetchProcess = spawn('git', fetchArgs, {
+          cwd: targetDir,
+          shell: true,
+        })
+        let output = ''
+        let errorOutput = ''
 
-    gitProcess.stdout?.on('data', (data) => {
-      output += data.toString()
-    })
-
-    gitProcess.stderr?.on('data', (data) => {
-      const chunk = data.toString()
-      output += chunk
-      errorOutput += chunk
-    })
-
-    gitProcess.on('close', (code) => {
-      if (code === 0) {
-        resolve({ success: true, output: output || '克隆完成' })
-      } else {
-        resolve({ success: false, output, error: errorOutput || `克隆失败，退出码: ${code}` })
+        fetchProcess.stdout?.on('data', (data: any) => {
+          const chunk = data.toString()
+          output += chunk
+        })
+        fetchProcess.stderr?.on('data', (data: any) => {
+          const chunk = data.toString()
+          output += chunk
+          errorOutput += chunk
+        })
+        fetchProcess.on('close', (code: number | null) => {
+          if (code === 0) {
+            resolve({ success: true, output: output || '续传完成', clonePath: targetDir, resumed: true })
+          } else {
+            // 如果 fetch 失败，删除目录重新克隆
+            try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch {}
+            // 继续下面的正常克隆流程
+            doNormalClone()
+          }
+        })
+        fetchProcess.on('error', (err: any) => {
+          // 如果 fetch 失败，删除目录重新克隆
+          try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch {}
+          // 继续下面的正常克隆流程
+          doNormalClone()
+        })
+        return
       }
-    })
+    }
 
-    gitProcess.on('error', (err) => {
-      resolve({ success: false, output, error: err.message })
-    })
+    // 正常克隆流程
+    function doNormalClone() {
+      const cloneArgs: string[] = ['clone']
+      if (options.branch) cloneArgs.push('-b', options.branch)
+      if (options.depth && options.depth > 0) cloneArgs.push('--depth', String(options.depth))
+      // 添加进度显示
+      cloneArgs.push('--progress')
+      cloneArgs.push(options.repoUrl)
+      if (targetDir) cloneArgs.push(targetDir)
+
+      const gitProcess = spawn('git', cloneArgs, { shell: true })
+      let output = ''
+      let errorOutput = ''
+      let lastProgress = ''
+
+      gitProcess.stdout?.on('data', (data: any) => {
+        const chunk = data.toString()
+        output += chunk
+        // 解析进度信息
+        const progressMatch = chunk.match(/Receiving objects:\s*(\d+)%/)
+        if (progressMatch) {
+          lastProgress = `下载进度: ${progressMatch[1]}%`
+        }
+      })
+
+      gitProcess.stderr?.on('data', (data: any) => {
+        const chunk = data.toString()
+        output += chunk
+        errorOutput += chunk
+        // git clone 的进度通常在 stderr
+        const progressMatch = chunk.match(/Receiving objects:\s*(\d+)%/)
+        if (progressMatch) {
+          lastProgress = `下载进度: ${progressMatch[1]}%`
+        }
+      })
+
+      gitProcess.on('close', (code: number | null) => {
+        if (code === 0) {
+          resolve({
+            success: true,
+            output: output || '克隆完成',
+            clonePath: targetDir || options.repoUrl.split('/').pop()?.replace('.git', ''),
+            progress: lastProgress,
+          })
+        } else {
+          resolve({
+            success: false,
+            output,
+            error: errorOutput || `克隆失败，退出码: ${code}`,
+            progress: lastProgress,
+          })
+        }
+      })
+
+      gitProcess.on('error', (err: any) => {
+        resolve({ success: false, output, error: err.message })
+      })
+    }
+
+    doNormalClone()
   })
+})
+
+/** 下载文件（用于移动端下载 ZIP） */
+ipcMain.handle('file:download', async (_event, options: { url: string; savePath: string }) => {
+  try {
+    const response = await fetch(options.url)
+    if (!response.ok) throw new Error(`下载失败: ${response.status}`)
+    const buffer = await response.arrayBuffer()
+    const fs = require('fs')
+    // 确保父目录存在
+    const parentDir = path.dirname(options.savePath)
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true })
+    }
+    fs.writeFileSync(options.savePath, Buffer.from(buffer))
+    return { success: true, savePath: options.savePath }
+  } catch (error: any) {
+    log.error('[File] Failed to download file:', error)
+    return { success: false, error: error?.message || '下载失败' }
+  }
 })
 
 /** 检查 Git 是否安装 */

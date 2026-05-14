@@ -68,6 +68,8 @@ const electronHandler: ElectronIPC = {
   writeFile: (path: string, content: string) => ipcRenderer.invoke('file:write', path, content),
   /** 文件操作 - 创建目录 */
   createDirectory: (path: string) => ipcRenderer.invoke('file:create-directory', path),
+  /** 文件操作 - 下载文件（用于移动端下载 ZIP 等） */
+  downloadFile: (url: string, savePath: string) => ipcRenderer.invoke('file:download', { url, savePath }),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronHandler)

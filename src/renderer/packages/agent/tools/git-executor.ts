@@ -12,6 +12,8 @@ export interface CloneResult {
   output: string
   error?: string
   clonePath?: string
+  progress?: string
+  resumed?: boolean
 }
 
 export interface CloneOptions {
@@ -34,9 +36,10 @@ function getElectronAPI(): any {
 
 /**
  * 执行 git clone 命令 (通过 IPC)
+ * 支持断点续传和进度显示
  */
 export async function executeGitClone(options: CloneOptions): Promise<CloneResult> {
-  const { repoUrl, targetDir, branch, depth } = options
+  const { repoUrl, targetDir, branch, depth, onProgress } = options
 
   try {
     const api = getElectronAPI()
@@ -56,16 +59,23 @@ export async function executeGitClone(options: CloneOptions): Promise<CloneResul
     })
 
     if (result.success) {
+      // 回调进度信息
+      if (onProgress && result.progress) {
+        onProgress(result.progress)
+      }
       return {
         success: true,
         output: result.output,
-        clonePath: targetDir || extractRepoName(repoUrl),
+        clonePath: result.clonePath || targetDir || extractRepoName(repoUrl),
+        progress: result.progress,
+        resumed: result.resumed || false,
       }
     } else {
       return {
         success: false,
         output: result.output,
         error: result.error,
+        progress: result.progress,
       }
     }
   } catch (error: any) {
@@ -75,6 +85,52 @@ export async function executeGitClone(options: CloneOptions): Promise<CloneResul
       error: error?.message || String(error) || '未知错误',
     }
   }
+}
+
+/**
+ * 下载文件（用于移动端下载 ZIP）
+ */
+export async function downloadFile(url: string, savePath: string): Promise<{ success: boolean; savePath?: string; error?: string }> {
+  try {
+    const api = getElectronAPI()
+    if (!api) {
+      return {
+        success: false,
+        error: '当前环境不支持下载文件（非 Electron 桌面环境）',
+      }
+    }
+
+    const result = await api.invoke('file:download', { url, savePath })
+    return result
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || String(error) || '下载失败',
+    }
+  }
+}
+
+/**
+ * 从仓库 URL 提取仓库信息
+ */
+export function extractRepoInfo(repoUrl: string): { owner: string; repo: string } | null {
+  const httpsMatch = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
+  if (httpsMatch) {
+    return {
+      owner: httpsMatch[1],
+      repo: httpsMatch[2].replace(/\.git$/, ''),
+    }
+  }
+
+  const sshMatch = repoUrl.match(/github\.com:([^/]+)\/([^/]+)/)
+  if (sshMatch) {
+    return {
+      owner: sshMatch[1],
+      repo: sshMatch[2].replace(/\.git$/, ''),
+    }
+  }
+
+  return null
 }
 
 /**
@@ -122,4 +178,17 @@ export function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
   }
+}
+
+/**
+ * 检测当前设备类型
+ */
+export function detectDeviceType(): 'pc' | 'mobile' {
+  if (typeof navigator !== 'undefined') {
+    const userAgent = navigator.userAgent.toLowerCase()
+    if (/android|iphone|ipad|ipod|mobile/i.test(userAgent)) {
+      return 'mobile'
+    }
+  }
+  return 'pc'
 }

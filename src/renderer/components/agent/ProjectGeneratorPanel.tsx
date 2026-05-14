@@ -61,6 +61,8 @@ import {
   IconMaximize,
   IconMinimize,
   IconSquare,
+  IconHistory,
+  IconTrash,
 } from '@tabler/icons-react'
 import { useDisclosure, useMediaQuery } from '@mantine/hooks'
 import { getModel } from '@shared/models'
@@ -144,6 +146,22 @@ interface GeneratedFile {
 }
 
 /**
+ * 项目生成历史记录
+ */
+interface ProjectHistoryItem {
+  id: string
+  name: string
+  type: string
+  description: string
+  fileCount: number
+  createdAt: number
+  files: GeneratedFile[]
+}
+
+/** localStorage 存储键 */
+const PROJECT_HISTORY_KEY = 'chatbox_project_generator_history'
+
+/**
  * 文件树节点类型
  */
 interface FileTreeNode {
@@ -162,6 +180,63 @@ function getElectronAPI(): any {
     return window.electronAPI
   }
   return null
+}
+
+/**
+ * 从 localStorage 加载项目历史记录
+ */
+function loadProjectHistory(): ProjectHistoryItem[] {
+  try {
+    if (typeof localStorage === 'undefined') return []
+    const data = localStorage.getItem(PROJECT_HISTORY_KEY)
+    if (!data) return []
+    return JSON.parse(data) as ProjectHistoryItem[]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 保存项目历史记录到 localStorage
+ */
+function saveProjectHistory(history: ProjectHistoryItem[]): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(history))
+  } catch {
+    // localStorage 可能已满或不可用
+  }
+}
+
+/**
+ * 生成唯一 ID
+ */
+function generateId(): string {
+  return `proj_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+}
+
+/**
+ * 格式化时间戳
+ */
+function formatTimestamp(ts: number): string {
+  const date = new Date(ts)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMinutes = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMinutes < 1) return '刚刚'
+  if (diffMinutes < 60) return `${diffMinutes} 分钟前`
+  if (diffHours < 24) return `${diffHours} 小时前`
+  if (diffDays < 7) return `${diffDays} 天前`
+
+  return date.toLocaleDateString('zh-CN', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 /**
@@ -510,6 +585,9 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
   const [error, setError] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
 
+  // 项目历史记录
+  const [projectHistory, setProjectHistory] = useState<ProjectHistoryItem[]>(() => loadProjectHistory())
+
   // UI 状态
   const [previewModalOpened, { open: openPreviewModal, close: closePreviewModal }] = useDisclosure()
   const [isViewerFullscreen, { toggle: toggleViewerFullscreen }] = useDisclosure(false)
@@ -618,6 +696,20 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
         setGeneratedFiles(files)
         // 自动选择第一个文件
         setSelectedFile(files[0])
+
+        // 保存到历史记录
+        const historyItem: ProjectHistoryItem = {
+          id: generateId(),
+          name: projectName,
+          type: projectType,
+          description: projectDescription,
+          fileCount: files.length,
+          createdAt: Date.now(),
+          files: files,
+        }
+        const updatedHistory = [historyItem, ...projectHistory].slice(0, 50) // 最多保留 50 条记录
+        setProjectHistory(updatedHistory)
+        saveProjectHistory(updatedHistory)
       }
     } catch (err) {
       if (abortController.signal.aborted) {
@@ -678,12 +770,42 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
       }
 
       // 显示成功提示（使用状态而不是弹窗）
-      setSaveSuccess(`✅ 项目已保存到: ${outputDir}`)
+      setSaveSuccess(`项目已保存到: ${outputDir}`)
       setTimeout(() => setSaveSuccess(null), 5000)
     } catch (err) {
       setError(`保存失败: ${err instanceof Error ? err.message : '未知错误'}`)
     }
   }, [generatedFiles, projectName])
+
+  /**
+   * 从历史记录加载项目
+   */
+  const handleLoadFromHistory = useCallback((item: ProjectHistoryItem) => {
+    setProjectName(item.name)
+    setProjectDescription(item.description)
+    setProjectType(item.type)
+    setGeneratedFiles(item.files)
+    setSelectedFile(item.files[0] || null)
+    setError(null)
+    setStreamingText('')
+  }, [])
+
+  /**
+   * 删除历史记录
+   */
+  const handleDeleteHistory = useCallback((id: string) => {
+    const updatedHistory = projectHistory.filter((item) => item.id !== id)
+    setProjectHistory(updatedHistory)
+    saveProjectHistory(updatedHistory)
+  }, [projectHistory])
+
+  /**
+   * 清空所有历史记录
+   */
+  const handleClearHistory = useCallback(() => {
+    setProjectHistory([])
+    saveProjectHistory([])
+  }, [])
 
   return (
     <Stack gap="lg" className={className}>
@@ -906,6 +1028,91 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
               </Paper>
             </Flex>
           </Stack>
+        </Paper>
+      )}
+
+      {/* 项目生成历史记录 */}
+      {projectHistory.length > 0 && (
+        <Paper p="md" radius="md" withBorder>
+          <Group justify="space-between" mb="sm">
+            <Group gap="xs">
+              <ThemeIcon size="sm" color="violet" variant="light">
+                <IconHistory size={14} />
+              </ThemeIcon>
+              <Text fw={500} size="sm">
+                生成记录
+              </Text>
+              <Badge size="sm" variant="light" color="violet">
+                {projectHistory.length}
+              </Badge>
+            </Group>
+            <Button
+              variant="subtle"
+              size="xs"
+              color="red"
+              leftSection={<IconTrash size={12} />}
+              onClick={handleClearHistory}
+            >
+              清空记录
+            </Button>
+          </Group>
+
+          <ScrollArea h={Math.min(projectHistory.length * 60, 300)}>
+            <Stack gap="xs">
+              {projectHistory.map((item) => {
+                const typeConfig = PROJECT_TYPE_CONFIG[item.type]
+                const TypeIcon = typeConfig?.icon || IconFolder
+
+                return (
+                  <Paper
+                    key={item.id}
+                    p="xs"
+                    radius="sm"
+                    withBorder
+                    style={{
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s',
+                    }}
+                    onClick={() => handleLoadFromHistory(item)}
+                  >
+                    <Group justify="space-between" wrap="nowrap">
+                      <Group gap="xs" wrap="nowrap" style={{ overflow: 'hidden' }}>
+                        <ThemeIcon size="sm" color={typeConfig?.color || 'gray'} variant="light">
+                          <TypeIcon size={14} />
+                        </ThemeIcon>
+                        <div style={{ overflow: 'hidden' }}>
+                          <Text size="sm" fw={500} lineClamp={1}>
+                            {item.name}
+                          </Text>
+                          <Text size="xs" c="dimmed" lineClamp={1}>
+                            {item.fileCount} 个文件 - {formatTimestamp(item.createdAt)}
+                          </Text>
+                        </div>
+                      </Group>
+                      <Group gap="xs" wrap="nowrap">
+                        <Badge size="xs" variant="light" color={typeConfig?.color || 'gray'}>
+                          {item.type}
+                        </Badge>
+                        <Tooltip label="删除记录">
+                          <ActionIcon
+                            size="xs"
+                            variant="subtle"
+                            color="red"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteHistory(item.id)
+                            }}
+                          >
+                            <IconTrash size={12} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    </Group>
+                  </Paper>
+                )
+              })}
+            </Stack>
+          </ScrollArea>
         </Paper>
       )}
 
