@@ -735,17 +735,57 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
   /**
    * 保存项目到本地
    */
+  /**
+   * 在浏览器/移动端保存项目（下载为文件）
+   */
+  const handleSaveBrowser = useCallback(async () => {
+    if (generatedFiles.length === 0) return
+
+    try {
+      // 方案：将所有文件打包为一个自解压 shell 脚本下载
+      // 同时生成一个 JSON 文件包含所有文件内容
+      const projectData = {
+        name: projectName,
+        type: projectType,
+        description: projectDescription,
+        files: generatedFiles.map(f => ({ path: f.path, language: f.language, content: f.content })),
+        createdAt: new Date().toISOString(),
+      }
+
+      // 创建 JSON 文件并下载
+      const jsonStr = JSON.stringify(projectData, null, 2)
+      const blob = new Blob([jsonStr], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${projectName}-project.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      setSaveSuccess(`项目文件已下载: ${projectName}-project.json`)
+      setTimeout(() => setSaveSuccess(null), 5000)
+    } catch (err: any) {
+      setError(`下载失败: ${err?.message || String(err) || '未知错误'}`)
+    }
+  }, [generatedFiles, projectName, projectType, projectDescription])
+
+  /**
+   * 保存项目（自动判断环境）
+   */
   const handleSave = useCallback(async () => {
     if (generatedFiles.length === 0) return
 
     try {
       const api = getElectronAPI()
       if (!api) {
-        setError('当前环境不支持保存文件')
+        // 浏览器/移动端：下载 JSON 文件
+        await handleSaveBrowser()
         return
       }
 
-      // 默认保存到 ~/Projects/项目名/
+      // Electron 桌面端：保存到本地目录
       const homeDir = await api.invoke('file:get-home-dir') || process.cwd()
       const outputDir = `${homeDir}/Projects/${projectName}`
 
@@ -770,13 +810,12 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
         savedCount++
       }
 
-      // 显示成功提示（使用状态而不是弹窗）
       setSaveSuccess(`项目已保存到: ${outputDir}`)
       setTimeout(() => setSaveSuccess(null), 5000)
-    } catch (err) {
-      setError(`保存失败: ${err instanceof Error ? err.message : '未知错误'}`)
+    } catch (err: any) {
+      setError(`保存失败: ${err?.message || String(err) || '未知错误'}`)
     }
-  }, [generatedFiles, projectName])
+  }, [generatedFiles, projectName, handleSaveBrowser])
 
   /**
    * 从历史记录加载项目
