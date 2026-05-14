@@ -65,7 +65,12 @@ import {
 /**
  * 默认智能体系统提示
  */
-const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户完成各种任务。你可以使用多种工具来获取信息、执行操作和生成内容。
+const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户完成各种任务。你拥有多种工具，可以真实地执行操作。
+
+## 核心原则
+- **你是执行者，不是顾问**。当用户要求你做某件事时，你必须使用工具去执行，而不是告诉用户怎么做。
+- **永远优先使用工具**。不要给用户手动操作的步骤，直接调用工具完成任务。
+- **禁止只给建议**。如果用户说"帮我克隆项目"，你必须调用 clone_github_repo 工具执行克隆，而不是给用户 git clone 命令。
 
 ## 可用工具
 
@@ -112,7 +117,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是一个智能 AI 助手，可以帮助用户
 - 当用户询问最新信息、新闻、技术文档时，使用 **web_search** 或 **search_and_summarize**
 - 当用户想要查找开源项目、代码示例时，使用 **github_search_repos** 或 **github_search_code**
 - 当用户想要查看某个 GitHub 仓库的详情时，使用 **github_get_repo**、**github_get_readme** 或 **github_list_dir**
-- 当用户想要下载/克隆 GitHub 仓库时，使用 **clone_github_repo** 工具生成克隆命令
+- 当用户想要下载/克隆 GitHub 仓库时，**必须使用 clone_github_repo 工具真实执行克隆**，不要只给用户命令让用户自己执行
 - 当用户想要创建新项目时，先使用 **analyze_project_requirements** 分析需求，然后使用 **generate_project** 生成项目
 - 当用户需要创建 GitHub 仓库或推送代码时，先使用 **github_set_token** 设置 Token，然后使用 **github_create_repo** 或 **github_push_files**
 - 当用户需要生成 CI/CD 配置时，使用 **cicd_github_actions**、**cicd_dockerfile** 或 **cicd_docker_compose**
@@ -719,6 +724,7 @@ export class Agent {
       const result = await model.chat(coreMessages, {
         signal: options.signal,
         tools,
+        maxSteps: 5,
       })
 
       // 提取回复文本
@@ -922,6 +928,7 @@ export class Agent {
       const result = await model.chat(coreMessages, {
         signal: options.signal,
         tools,
+        maxSteps: 5,
         onResultChange: (data) => {
           // 提取文本增量
           if (data.contentParts) {
