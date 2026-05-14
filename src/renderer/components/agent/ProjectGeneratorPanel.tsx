@@ -593,6 +593,7 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
   const [isViewerFullscreen, { toggle: toggleViewerFullscreen }] = useDisclosure(false)
   const isMobile = useMediaQuery('(max-width: 768px)')
   const [treeCollapsed, setTreeCollapsed] = useState(false)
+  const [modalTreeCollapsed, setModalTreeCollapsed] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null)
 
   // AbortController 引用
@@ -1124,20 +1125,56 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
         size="xl"
         fullScreen={isMobile}
       >
-        <Flex gap="md" style={{ height: isMobile ? 'calc(100vh - 150px)' : 500 }} align="stretch">
-          {/* 文件树 */}
-          <Paper p="sm" style={{ width: 250, overflow: 'auto' }}>
-            <ScrollArea h={isMobile ? '100%' : 450}>
-              <FileTree
-                nodes={fileTree}
-                onSelectFile={setSelectedFile}
-                selectedFile={selectedFile?.path}
-              />
-            </ScrollArea>
+        {/* 移动端：上下布局；PC端：左右布局 */}
+        <Flex
+          gap="md"
+          direction={isMobile ? 'column' : 'row'}
+          style={{ height: isMobile ? 'calc(100vh - 150px)' : 500 }}
+          align="stretch"
+        >
+          {/* 文件树 - 可收起 */}
+          <Paper
+            p="sm"
+            style={{
+              width: isMobile
+                ? '100%'
+                : modalTreeCollapsed ? 40 : 250,
+              minWidth: isMobile ? '100%' : modalTreeCollapsed ? 40 : 200,
+              maxWidth: isMobile ? '100%' : '45%',
+              height: isMobile ? '40%' : '100%',
+              overflow: 'auto',
+              transition: 'width 0.3s',
+              flexShrink: 0,
+            }}
+          >
+            <Group justify="space-between" mb="xs">
+              {!modalTreeCollapsed && <Text size="sm" fw={500}>文件列表</Text>}
+              <ActionIcon size="sm" variant="subtle" onClick={() => setModalTreeCollapsed(!modalTreeCollapsed)}>
+                {modalTreeCollapsed ? <IconChevronRight size={16} /> : <IconChevronLeft size={16} />}
+              </ActionIcon>
+            </Group>
+            {!modalTreeCollapsed && (
+              <ScrollArea h={isMobile ? '100%' : 450}>
+                <FileTree
+                  nodes={fileTree}
+                  onSelectFile={setSelectedFile}
+                  selectedFile={selectedFile?.path}
+                />
+              </ScrollArea>
+            )}
           </Paper>
 
           {/* 文件内容 */}
-          <Paper p="sm" style={{ flex: 1, overflow: 'auto' }}>
+          <Paper
+            p="sm"
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              minWidth: 0,
+            }}
+          >
             <FileViewer file={selectedFile} />
           </Paper>
         </Flex>
