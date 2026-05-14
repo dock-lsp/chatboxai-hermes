@@ -56,6 +56,7 @@ import {
   IconFolderOpen,
   IconChevronRight,
   IconChevronDown,
+  IconChevronLeft,
   IconSparkles,
   IconMaximize,
   IconMinimize,
@@ -151,6 +152,16 @@ interface FileTreeNode {
   type: 'file' | 'directory'
   children?: FileTreeNode[]
   file?: GeneratedFile
+}
+
+/**
+ * 获取 Electron API
+ */
+function getElectronAPI(): any {
+  if (typeof window !== 'undefined' && window.electronAPI) {
+    return window.electronAPI
+  }
+  return null
 }
 
 /**
@@ -457,6 +468,7 @@ function FileViewer({ file, isFullscreen, onToggleFullscreen }: FileViewerProps)
         style={{
           flex: 1,
           overflow: 'auto',
+          minHeight: 0, // 关键：允许 flex 子项收缩
           fontFamily: 'monospace',
           fontSize: isFullscreen ? '14px' : '12px',
           whiteSpace: 'pre-wrap',
@@ -465,7 +477,9 @@ function FileViewer({ file, isFullscreen, onToggleFullscreen }: FileViewerProps)
           lineHeight: 1.6,
         }}
       >
-        {file.content}
+        <Box style={{ minWidth: '100%' }}>
+          {file.content}
+        </Box>
       </Paper>
     </Stack>
   )
@@ -500,6 +514,8 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
   const [previewModalOpened, { open: openPreviewModal, close: closePreviewModal }] = useDisclosure()
   const [isViewerFullscreen, { toggle: toggleViewerFullscreen }] = useDisclosure(false)
   const isMobile = useMediaQuery('(max-width: 768px)')
+  const [treeCollapsed, setTreeCollapsed] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null)
 
   // AbortController 引用
   const abortControllerRef = React.useRef<AbortController | null>(null)
@@ -624,15 +640,50 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
   }, [])
 
   /**
-   * 保存项目
+   * 保存项目到本地
    */
   const handleSave = useCallback(async () => {
     if (generatedFiles.length === 0) return
-    // 这里应该调用 Electron 的 IPC 或文件系统 API 保存文件
-    console.log('保存项目文件:', generatedFiles.map((f) => f.path))
-    // 静默处理，不使用弹窗
-    console.log('项目保存功能需要集成文件系统 API')
-  }, [generatedFiles])
+
+    try {
+      const api = getElectronAPI()
+      if (!api) {
+        setError('当前环境不支持保存文件')
+        return
+      }
+
+      // 默认保存到 ~/Projects/项目名/
+      const homeDir = await api.invoke('file:get-home-dir') || process.cwd()
+      const outputDir = `${homeDir}/Projects/${projectName}`
+
+      // 创建目录
+      await api.invoke('file:create-directory', outputDir)
+
+      // 保存所有文件
+      let savedCount = 0
+      for (const file of generatedFiles) {
+        const filePath = `${outputDir}/${file.path}`
+        // 确保父目录存在
+        const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+        if (dir && dir !== outputDir) {
+          try {
+            await api.invoke('file:create-directory', dir)
+          } catch {
+            // 目录可能已存在
+          }
+        }
+        // 写入文件
+        await api.invoke('file:write', filePath, file.content)
+        savedCount++
+      }
+
+      // 显示成功提示（使用状态而不是弹窗）
+      setSaveSuccess(`✅ 项目已保存到: ${outputDir}`)
+      setTimeout(() => setSaveSuccess(null), 5000)
+    } catch (err) {
+      setError(`保存失败: ${err instanceof Error ? err.message : '未知错误'}`)
+    }
+  }, [generatedFiles, projectName])
 
   return (
     <Stack gap="lg" className={className}>
@@ -658,6 +709,13 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
       {error && (
         <Alert color="red" icon={<IconX size={16} />} withCloseButton onClose={() => setError(null)}>
           {error}
+        </Alert>
+      )}
+
+      {/* 成功提示 */}
+      {saveSuccess && (
+        <Alert color="green" icon={<IconCheck size={16} />} withCloseButton onClose={() => setSaveSuccess(null)}>
+          {saveSuccess}
         </Alert>
       )}
 
@@ -819,19 +877,27 @@ export function ProjectGeneratorPanel({ className }: ProjectGeneratorPanelProps)
 
             {/* 文件树 + 文件查看器 */}
             <Flex gap="md" style={{ minHeight: 400 }} align="stretch">
-              {/* 文件树 */}
-              <Paper p="sm" style={{ width: 250, minWidth: 200, overflow: 'auto' }}>
-                <ScrollArea h={350}>
-                  <FileTree
-                    nodes={fileTree}
-                    onSelectFile={setSelectedFile}
-                    selectedFile={selectedFile?.path}
-                  />
-                </ScrollArea>
+              {/* 文件树 - 可收起 */}
+              <Paper p="sm" style={{ width: treeCollapsed ? 40 : 250, minWidth: treeCollapsed ? 40 : 200, overflow: 'auto', transition: 'width 0.3s' }}>
+                <Group justify="space-between" mb="xs">
+                  {!treeCollapsed && <Text size="sm" fw={500}>文件列表</Text>}
+                  <ActionIcon size="sm" variant="subtle" onClick={() => setTreeCollapsed(!treeCollapsed)}>
+                    {treeCollapsed ? <IconChevronRight size={16} /> : <IconChevronLeft size={16} />}
+                  </ActionIcon>
+                </Group>
+                {!treeCollapsed && (
+                  <ScrollArea h={350}>
+                    <FileTree
+                      nodes={fileTree}
+                      onSelectFile={setSelectedFile}
+                      selectedFile={selectedFile?.path}
+                    />
+                  </ScrollArea>
+                )}
               </Paper>
 
               {/* 文件查看器 */}
-              <Paper p="sm" style={{ flex: 1, overflow: 'auto' }}>
+              <Paper p="sm" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <FileViewer
                   file={selectedFile}
                   isFullscreen={isViewerFullscreen}
